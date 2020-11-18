@@ -24,7 +24,7 @@ if __name__ == "__main__":
     net = caffe.Net(args.netFile, 1, weights=args.modelFile)
 
     # Read and dump blobs
-    for name, blobs in net.params.iteritems():
+    for name, blobs in net.params.items():
         print('Name: {0}, Blobs: {1}'.format(name, len(blobs)))
         for i in range(len(blobs)):
             # Weights
