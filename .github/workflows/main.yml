@@ -12,6 +12,7 @@ jobs:
         brew update-reset
         brew unlink python@3.8
         brew install scons
+        brew install gcc
         brew install arm-linux-gnueabihf-binutils 
         brew tap osx-cross/arm
         brew install arm-gcc-bin llvm rsync
