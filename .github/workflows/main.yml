@@ -1,0 +1,18 @@
+name: Build application
+
+on: [push, pull_request]
+
+jobs:
+  macos-clang-build:
+    runs-on: macOS-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Setup environment
+      run: |
+        brew update-reset
+        brew unlink python@3.8
+        brew install scons
+        brew install arm-linux-gnueabihf-binutils
+    - name: Build
+      run: |
+        scons Werror=1 debug=0 asserts=0 neon=1 opencl=0 examples=1 os=linux arch=armv7a -j4
