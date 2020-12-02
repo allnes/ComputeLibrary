@@ -43,9 +43,9 @@ if __name__ == "__main__":
                 for op in graph.get_operations():
                     for op_val in op.values():
                         varname = op_val.name
-
                         # Skip non-const values
                         if "read" in varname:
+                            
                             t  = op_val.eval()
                             tT = t.transpose(permutations[len(t.shape)])
                             t  = np.ascontiguousarray(tT)

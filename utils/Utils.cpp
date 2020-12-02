@@ -33,6 +33,10 @@
 #include <iomanip>
 #include <string>
 
+#include <chrono>
+typedef std::chrono::high_resolution_clock Time;
+typedef std::chrono::nanoseconds ns;
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -40,6 +44,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 #pragma GCC diagnostic pop
+
+
 
 namespace arm_compute
 {

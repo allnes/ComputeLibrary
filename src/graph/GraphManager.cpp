@@ -34,6 +34,10 @@
 
 #include "arm_compute/graph/algorithms/TopologicalSort.h"
 
+#include <chrono>
+typedef std::chrono::high_resolution_clock Time;
+typedef std::chrono::nanoseconds ns;
+
 namespace arm_compute
 {
 namespace graph
@@ -124,7 +128,24 @@ void GraphManager::execute_graph(Graph &graph)
         }
 
         // Run graph
-        detail::call_all_tasks(it->second);
+        const int num = 1000;
+        auto startTime = Time::now();
+        for (int i = 0; i < num; i++)
+            detail::call_all_tasks(it->second);
+        auto endTime = Time::now();
+        std::cout << "Average time = " << (std::chrono::duration_cast<ns>(endTime - startTime).count() * 0.000001) / num << " ms" << std::endl;
+
+        std::vector<double> all_time;
+        for (int i = 0; i < num; i++)
+        {
+            startTime = Time::now();
+            detail::call_all_tasks(it->second);
+            endTime = Time::now();
+            double total_time = (std::chrono::duration_cast<ns>(endTime - startTime).count() * 0.000001);
+            all_time.push_back(total_time);
+        }
+        std::cout << "Min time = " << *std::min_element(all_time.begin(), all_time.end()) << std::endl;
+        std::cout << "Max time = " << *std::max_element(all_time.begin(), all_time.end()) << std::endl;
 
         // Call output accessors
         if(!detail::call_all_output_node_accessors(it->second))
