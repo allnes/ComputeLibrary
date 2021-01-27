@@ -1,4 +1,4 @@
-build/
+build*
 data_model/
 acl_venv
 .vscode

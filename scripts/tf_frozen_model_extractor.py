@@ -47,8 +47,8 @@ if __name__ == "__main__":
                         if "read" in varname:
                             
                             t  = op_val.eval()
-                            tT = t.transpose(permutations[len(t.shape)])
-                            t  = np.ascontiguousarray(tT)
+                            # tT = t.transpose(permutations[len(t.shape)])
+                            t  = np.ascontiguousarray(t)
 
                             for s in strings_to_remove:
                                 varname = varname.replace(s, "")

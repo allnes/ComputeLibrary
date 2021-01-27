@@ -24,6 +24,7 @@ import numpy as np
 import os
 import tensorflow as tf
 
+dir(tf.contrib)
 
 if __name__ == "__main__":
     # Parse arguments
@@ -36,16 +37,17 @@ if __name__ == "__main__":
 
     # Load Tensorflow Net
     saver = tf.train.import_meta_graph(args.netFile)
-    with tf.Session() as sess:
-        # Restore session
-        saver.restore(sess, args.modelFile)
-        print('Model restored.')
-        # Save trainable variables to numpy arrays
-        for t in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-            varname = t.name
-            if os.path.sep in t.name:
-                varname = varname.replace(os.path.sep, '_')
-                print("Renaming variable {0} to {1}".format(t.name, varname))
-            print("Saving variable {0} with shape {1} ...".format(varname, t.shape))
-            # Dump as binary
-            np.save(varname, sess.run(t))
+    with tf.device("/job:ps/task:4/device:CPU:0"):
+        with tf.Session() as sess:
+                # Restore session
+                saver.restore(sess, args.modelFile)
+                print('Model restored.')
+                # Save trainable variables to numpy arrays
+                for t in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+                    varname = t.name
+                    if os.path.sep in t.name:
+                        varname = varname.replace(os.path.sep, '_')
+                        print("Renaming variable {0} to {1}".format(t.name, varname))
+                    print("Saving variable {0} with shape {1} ...".format(varname, t.shape))
+                    # Dump as binary
+                    np.save(varname, sess.run(t))
