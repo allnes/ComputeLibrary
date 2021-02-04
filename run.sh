@@ -1,7 +1,7 @@
 export LD_LIBRARY_PATH=build/
 # Alexnet
 # ./build/examples/graph_alexnet --layout=NCHW --target=NEON --threads=1 --type=F32 --data=data_model/public/alexnet --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
-# ./build/examples/graph_alexnet --layout=NCHW --target=NEON --threads=4 --type=QASYMM8 --data=data_model/public/alexnet --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
+# ./build/examples/graph_alexnet --layout=NCHW --target=NEON --threads=4 --type=F32 --data=data_model/public/alexnet --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
 
 # Resnet50
 # ./build/examples/graph_resnet50 --layout=NCHW --target=NEON --threads=1 --type=F32 --data=data_model/public --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
@@ -9,7 +9,7 @@ export LD_LIBRARY_PATH=build/
 
 # VGG16
 # ./build/examples/graph_vgg16 --layout=NCHW --target=NEON --threads=1 --type=F32 --data=data_model/public --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
-# ./build/examples/graph_vgg16 --layout=NCHW --target=NEON --threads=4 --type=QASYMM8 --data=data_model/public --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
+# ./build/examples/graph_vgg16 --layout=NCHW --target=NEON --threads=4 --type=F32 --data=data_model/public --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
 
 # VGG19
 # ./build/examples/graph_vgg19 --layout=NCHW --target=NEON --threads=1 --type=F32 --data=data_model/public --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
@@ -17,7 +17,7 @@ export LD_LIBRARY_PATH=build/
 
 # Squeeznet
 # ./build/examples/graph_squeezenet_v1_1 --layout=NCHW --target=NEON --threads=1 --type=F32 --data=data_model/public --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
-# ./build/examples/graph_squeezenet_v1_1 --layout=NCHW --target=NEON --threads=4 --type=QASYMM8 --data=data_model/public --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
+./build/examples/graph_squeezenet_v1_1 --layout=NCHW --target=NEON --threads=4 --type=F32 --data=data_model/public --image=data/images/227x227.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
 
 # Mobilenet-v1
 # ./build/examples/graph_mobilenet --fast-math --layout=NCHW --target=NEON --threads=1 --type=F32 --data=data_model/public --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
@@ -34,6 +34,10 @@ export LD_LIBRARY_PATH=build/
 
 # Mobilenet-v2-quantization
 # ./build/examples/graph_mobilenet_v2 --fast-math --layout=NCHW --target=NEON --threads=1 --type=QASYMM8 --data=data_model/public --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
+
+# Densenet
+./build/examples/graph_squeezenet --layout=NHWC --target=NEON --threads=4 --type=F32 --data=data_model/densenet_assets --image=data/images/224x224.ppm --labels=data/imagenet1000_clsidx_to_labels.txt 
+
 
 ######################################################################################################################################################################################
 
