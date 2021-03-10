@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -65,8 +65,13 @@ public:
         std::string data_path = common_params.data_path;
 
         // Create a preprocessor object
+<<<<<<< HEAD
         const std::array<float, 3> mean_rgb{ { 103.94f, 116.78f, 123.68f } };
         std::unique_ptr<IPreprocessor> preprocessor = arm_compute::support::cpp14::make_unique<CaffePreproccessor>(mean_rgb, false, 1. / 58.8235294);
+=======
+        const std::array<float, 3> mean_rgb{ { 122.68f, 116.67f, 104.01f } };
+        std::unique_ptr<IPreprocessor> preprocessor = std::make_unique<CaffePreproccessor>(mean_rgb);
+>>>>>>> 7dcb9fadb98cad05fca72de3273311d570d98b4e
 
         // Create input descriptor
         const auto        operation_layout = common_params.data_layout;
@@ -2325,6 +2330,7 @@ graph
         config.use_tuner        = common_params.enable_tuner;
         config.tuner_mode       = common_params.tuner_mode;
         config.tuner_file       = common_params.tuner_file;
+        config.mlgo_file        = common_params.mlgo_file;
         config.convert_to_uint8 = (common_params.data_type == DataType::QASYMM8);
 
         graph.finalize(common_params.target, config);
