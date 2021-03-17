@@ -326,8 +326,8 @@ if env['standalone']:
     env.Append(CXXFLAGS = ['-fPIC'])
     env.Append(LINKFLAGS = ['-static-libgcc','-static-libstdc++'])
 
-if env['Werror']:
-    env.Append(CXXFLAGS = ['-Werror'])
+# if env['Werror']:
+#     env.Append(CXXFLAGS = ['-Werror'])
 
 if env['os'] == 'android':
     env.Append(CPPDEFINES = ['ANDROID'])
