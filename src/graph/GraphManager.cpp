@@ -128,7 +128,7 @@ void GraphManager::execute_graph(Graph &graph)
         }
 
         // Run graph
-        const int num = 1;
+        const int num = 100;
         auto startTime = Time::now();
         for (int i = 0; i < num; i++)
             detail::call_all_tasks(it->second);
