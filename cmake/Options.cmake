@@ -28,7 +28,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 option(ARM_COMPUTE_WERROR "Enable the -Werror compilation flag" OFF)
 option(ARM_COMPUTE_EXCEPTIONS "Enable C++ exception support" ON)
-option(ARM_COMPUTE_LOGGING "Enable logging" OFF)
+option(ARM_COMPUTE_LOGGING "Enable logging" ON)
 option(ARM_COMPUTE_BUILD_EXAMPLES "Build example programs" ON)
 option(ARM_COMPUTE_BUILD_TESTING "Build tests" OFF)
 option(ARM_COMPUTE_CPPTHREADS "Enable C++11 threads backend" OFF)

@@ -266,7 +266,7 @@ int main(int argc, char **argv)
     //   std::cout << "QuantisationInfo(" << src2_qinfo.scale()[0] << ", " << src2_qinfo.offset()[0] << ")\n";
     //   std::cout << "Result  : min=" << dst0_min << ", max=" << dst0_max << ", ";
     //   std::cout << "QuantisationInfo(" << dst0_qinfo.scale()[0] << ", " << dst0_qinfo.offset()[0] << ")\n";
-    std::vector<uint8_t *> dst8_ptr(2);
+    std::vector<float *> dst8_ptr(2);
 
     {
         Tensor q_src1;
@@ -312,26 +312,27 @@ int main(int argc, char **argv)
 
         // Configure low precision gemm and initialise result tensor (pre-output)
         NEGEMMLowpMatrixMultiplyCore qgemm;
-        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
+//        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
+        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
         qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
 
-        // Configure output stage after computing shift and multiplier parameters
-        NEGEMMLowpOutputStage gemmlowp_output_stage;
-        int                   output_multiplier;
-        int                   output_shift;
-        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
-        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
-        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
-
-        GEMMLowpOutputStageInfo info;
-        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
-        info.gemmlowp_multiplier = output_multiplier;
-        info.gemmlowp_shift      = output_shift;
-        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
-        info.output_data_type    = DataType::QASYMM8;
-        q_res_output.info()->set_data_type(DataType::QASYMM8);
-        q_res_output.info()->set_num_channels(1);
-        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+//        // Configure output stage after computing shift and multiplier parameters
+//        NEGEMMLowpOutputStage gemmlowp_output_stage;
+//        int                   output_multiplier;
+//        int                   output_shift;
+//        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
+//        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
+//        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
+//
+//        GEMMLowpOutputStageInfo info;
+//        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
+//        info.gemmlowp_multiplier = output_multiplier;
+//        info.gemmlowp_shift      = output_shift;
+//        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
+//        info.output_data_type    = DataType::QASYMM8;
+//        q_res_output.info()->set_data_type(DataType::QASYMM8);
+//        q_res_output.info()->set_num_channels(1);
+//        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
 
         // Allocate all tensors
 #ifdef enableTransferTensorsWithoutQuantINfo1
@@ -354,10 +355,10 @@ int main(int argc, char **argv)
         // Run low precision matrix multiply kernel
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
-        dst8_ptr[0] = reinterpret_cast<uint8_t *>(q_res.buffer());
+        dst8_ptr[0] = reinterpret_cast<float *>(q_res.buffer());
 
         // Run output stage kernel
-        gemmlowp_output_stage.run();
+//        gemmlowp_output_stage.run();
     }
 
     {
@@ -404,26 +405,27 @@ int main(int argc, char **argv)
 
         // Configure low precision gemm and initialise result tensor (pre-output)
         NEGEMMLowpMatrixMultiplyCore qgemm;
-        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
+//        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
+        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
         qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
 
-        // Configure output stage after computing shift and multiplier parameters
-        NEGEMMLowpOutputStage gemmlowp_output_stage;
-        int                   output_multiplier;
-        int                   output_shift;
-        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
-        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
-        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
-
-        GEMMLowpOutputStageInfo info;
-        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
-        info.gemmlowp_multiplier = output_multiplier;
-        info.gemmlowp_shift      = output_shift;
-        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
-        info.output_data_type    = DataType::QASYMM8;
-        q_res_output.info()->set_data_type(DataType::QASYMM8);
-        q_res_output.info()->set_num_channels(1);
-        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+//        // Configure output stage after computing shift and multiplier parameters
+//        NEGEMMLowpOutputStage gemmlowp_output_stage;
+//        int                   output_multiplier;
+//        int                   output_shift;
+//        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
+//        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
+//        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
+//
+//        GEMMLowpOutputStageInfo info;
+//        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
+//        info.gemmlowp_multiplier = output_multiplier;
+//        info.gemmlowp_shift      = output_shift;
+//        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
+//        info.output_data_type    = DataType::QASYMM8;
+//        q_res_output.info()->set_data_type(DataType::QASYMM8);
+//        q_res_output.info()->set_num_channels(1);
+//        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
 
         // Allocate all tensors
 #ifdef enableTransferTensorsWithoutQuantINfo2
@@ -446,10 +448,10 @@ int main(int argc, char **argv)
         // Run low precision matrix multiply kernel
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
-        dst8_ptr[1] = reinterpret_cast<uint8_t *>(q_res.buffer());
+        dst8_ptr[1] = reinterpret_cast<float *>(q_res.buffer());
 
         // Run output stage kernel
-        gemmlowp_output_stage.run();
+//        gemmlowp_output_stage.run();
     }
 
     for(int i = 0; i < N * M; i++) {
