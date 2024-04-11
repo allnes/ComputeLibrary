@@ -266,6 +266,7 @@ int main(int argc, char **argv)
     //   std::cout << "QuantisationInfo(" << src2_qinfo.scale()[0] << ", " << src2_qinfo.offset()[0] << ")\n";
     //   std::cout << "Result  : min=" << dst0_min << ", max=" << dst0_max << ", ";
     //   std::cout << "QuantisationInfo(" << dst0_qinfo.scale()[0] << ", " << dst0_qinfo.offset()[0] << ")\n";
+    std::vector<uint8_t *> dst8_ptr(2);
 
     {
         Tensor q_src1;
@@ -353,13 +354,7 @@ int main(int argc, char **argv)
         // Run low precision matrix multiply kernel
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
-        auto *dst8_ptr = reinterpret_cast<uint8_t *>(q_res.buffer());
-
-        for(int i = 0; i < 10; i++)
-        {
-            std::cout << (int)dst8_ptr[i] << " ";
-        }
-        std::cout << std::endl;
+        dst8_ptr[0] = reinterpret_cast<uint8_t *>(q_res.buffer());
 
         // Run output stage kernel
         gemmlowp_output_stage.run();
@@ -451,16 +446,19 @@ int main(int argc, char **argv)
         // Run low precision matrix multiply kernel
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
-        auto *dst8_ptr = reinterpret_cast<uint8_t *>(q_res.buffer());
-
-        for(int i = 0; i < 10; i++)
-        {
-            std::cout << (int)dst8_ptr[i] << " ";
-        }
-        std::cout << std::endl;
+        dst8_ptr[1] = reinterpret_cast<uint8_t *>(q_res.buffer());
 
         // Run output stage kernel
         gemmlowp_output_stage.run();
+    }
+
+    for(int i = 0; i < N * M; i++) {
+        if (dst8_ptr[0][i] != dst8_ptr[1][i]) {
+            std::cout << "\nTest Failed\n";
+            std::cout << "dst8_ptr[0]["<< i << "] = " << dst8_ptr[0][i] << "\n";
+            std::cout << "dst8_ptr[1]["<< i << "] = " << dst8_ptr[1][i] << "\n";
+            return -1;
+        }
     }
 
     std::cout << "\nTest Passed\n";
