@@ -33,6 +33,8 @@
 #include <cstdlib>
 #include <chrono>
 
+#define enableTransferTensorsWithoutQuantINfo
+
 using namespace arm_compute;
 using namespace utils;
 
@@ -110,201 +112,241 @@ void quantize_values(int size, qasymm8_t *output, float *input, const Quantizati
 int main(int argc, char **argv)
 {
     const int count_iter = 100;
-   Tensor src1, src1_f16;
-   Tensor src2, src2_f16;
-   Tensor dst0, dst0_f16;
-   Tensor q_src1;
-   Tensor q_src2;
-   Tensor q_dst0;
-   Tensor q_res;
-   Tensor q_res_output;
-   size_t M             = 4;
-   size_t N             = 4;
-   size_t K             = 4;
-   bool   default_input = true;
+    Tensor    src1, src1_f16;
+    Tensor    src2, src2_f16;
+    Tensor    dst0, dst0_f16;
+    Tensor    q_src1;
+    Tensor    q_src2;
+    Tensor    q_dst0;
+    Tensor    q_res;
+    Tensor    q_res_output;
+    size_t    M             = 4;
+    size_t    N             = 4;
+    size_t    K             = 4;
+    bool      default_input = true;
 
-   // Parse args
-   if (argc < 3) /* case default matrix sizes */
-   {
-       // Print help
-       std::cout << "Usage: ./build/neon_gemm_qasymm8 M N K\n";
-       std::cout << "Too few or no inputs provided. Using default M=4, N=4, K=4\n\n";
-   }
-   else /* case M N K arguments provided */
-   {
-       M             = strtol(argv[1], nullptr, 10);
-       N             = strtol(argv[2], nullptr, 10);
-       K             = strtol(argv[3], nullptr, 10);
-       default_input = false;
-   }
+    // Parse args
+    if(argc < 3) /* case default matrix sizes */
+    {
+        // Print help
+        std::cout << "Usage: ./build/neon_gemm_qasymm8 M N K\n";
+        std::cout << "Too few or no inputs provided. Using default M=4, N=4, K=4\n\n";
+    }
+    else /* case M N K arguments provided */
+    {
+        M             = strtol(argv[1], nullptr, 10);
+        N             = strtol(argv[2], nullptr, 10);
+        K             = strtol(argv[3], nullptr, 10);
+        default_input = false;
+    }
 
-   /*** Floating point matrix multiplication ***/
+    /*** Floating point matrix multiplication ***/
 
-   // Initialise input matrices
-   NEGEMM fgemm{};
+    // Initialise input matrices
+    NEGEMM fgemm{};
 
-   src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F32));
-   src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F32));
-   dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F32));
-   fgemm.configure(&src1, &src2, nullptr, &dst0, 1, 0);
+    src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F32));
+    src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F32));
+    dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F32));
+    fgemm.configure(&src1, &src2, nullptr, &dst0, 1, 0);
 
-   // Allocate matrices
-   src1.allocator()->allocate();
-   src2.allocator()->allocate();
-   dst0.allocator()->allocate();
+    // Allocate matrices
+    src1.allocator()->allocate();
+    src2.allocator()->allocate();
+    dst0.allocator()->allocate();
 
-   // Fill in tensors, by default fill in with known data - for easy testing
-   auto *src1_ptr = reinterpret_cast<float *>(src1.buffer());
-   auto *src2_ptr = reinterpret_cast<float *>(src2.buffer());
-   auto *dst0_ptr = reinterpret_cast<float *>(dst0.buffer());
+    // Fill in tensors, by default fill in with known data - for easy testing
+    auto *src1_ptr = reinterpret_cast<float *>(src1.buffer());
+    auto *src2_ptr = reinterpret_cast<float *>(src2.buffer());
+    auto *dst0_ptr = reinterpret_cast<float *>(dst0.buffer());
 
-   // Fill in: one is the identity matrix, other is sequential values
-   // src1: Identity matrix
-   for (size_t i = 0; i < M * K; i++)
-   {
-       src1_ptr[i] = 0;
-   }
-   for (size_t i = 0; i < M; i++)
-   {
-       src1_ptr[i * K + i] = 1.0f;
-   }
+    // Fill in: one is the identity matrix, other is sequential values
+    // src1: Identity matrix
+    for(size_t i = 0; i < M * K; i++)
+    {
+        src1_ptr[i] = 0;
+    }
+    for(size_t i = 0; i < M; i++)
+    {
+        src1_ptr[i * K + i] = 1.0f;
+    }
 
-   // src2: Sequential values matrix
-   for (size_t i = 0; i < K * N; i++)
-   {
-       src2_ptr[i] = i * 1.123f;
-   }
+    // src2: Sequential values matrix
+    for(size_t i = 0; i < K * N; i++)
+    {
+        src2_ptr[i] = i * 1.123f;
+    }
 
-   // Otherwise if M, N, K is given, fill in with random values
-   if (!default_input)
-   {
-       fill_random_tensor(src1, 0.f, 1.f);
-       fill_random_tensor(src2, 0.f, 1.f);
-   }
+    // Otherwise if M, N, K is given, fill in with random values
+    if(!default_input)
+    {
+        fill_random_tensor(src1, 0.f, 1.f);
+        fill_random_tensor(src2, 0.f, 1.f);
+    }
 
-   // Run single precision gemm and print result
-   print_results(count_iter,[&]{ fgemm.run(); }, "fp32 time");
+    // Run single precision gemm and print result
+    print_results(count_iter, [&]
+                  { fgemm.run(); }, "fp32 time");
 
+    NEGEMM fgemm_f16{};
+    src1_f16.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F16));
+    src2_f16.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F16));
+    dst0_f16.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F16));
+    fgemm_f16.configure(&src1_f16, &src2_f16, nullptr, &dst0_f16, 1, 0);
 
-   NEGEMM fgemm_f16{};
-   src1_f16.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F16));
-   src2_f16.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F16));
-   dst0_f16.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F16));
-   fgemm_f16.configure(&src1_f16, &src2_f16, nullptr, &dst0_f16, 1, 0);
+    // Allocate matrices
+    src1_f16.allocator()->allocate();
+    src2_f16.allocator()->allocate();
+    dst0_f16.allocator()->allocate();
 
-   // Allocate matrices
-   src1_f16.allocator()->allocate();
-   src2_f16.allocator()->allocate();
-   dst0_f16.allocator()->allocate();
+    // Fill in tensors, by default fill in with known data - for easy testing
+    auto *src1_ptr_f16 = reinterpret_cast<float16_t *>(src1_f16.buffer());
+    auto *src2_ptr_f16 = reinterpret_cast<float16_t *>(src2_f16.buffer());
+    auto *dst0_ptr_f16 = reinterpret_cast<float16_t *>(dst0_f16.buffer());
 
-   // Fill in tensors, by default fill in with known data - for easy testing
-   auto *src1_ptr_f16 = reinterpret_cast<float16_t *>(src1_f16.buffer());
-   auto *src2_ptr_f16 = reinterpret_cast<float16_t *>(src2_f16.buffer());
-   auto *dst0_ptr_f16 = reinterpret_cast<float16_t *>(dst0_f16.buffer());
+    // Fill in: one is the identity matrix, other is sequential values
+    // src1: Identity matrix
+    for(size_t i = 0; i < M * K; i++)
+    {
+        src1_ptr_f16[i] = 0;
+    }
+    for(size_t i = 0; i < M; i++)
+    {
+        src1_ptr_f16[i * K + i] = 1.0f;
+    }
 
-   // Fill in: one is the identity matrix, other is sequential values
-   // src1: Identity matrix
-   for (size_t i = 0; i < M * K; i++)
-   {
-       src1_ptr_f16[i] = 0;
-   }
-   for (size_t i = 0; i < M; i++)
-   {
-       src1_ptr_f16[i * K + i] = 1.0f;
-   }
+    // src2: Sequential values matrix
+    for(size_t i = 0; i < K * N; i++)
+    {
+        src2_ptr_f16[i] = i * 1.123f;
+    }
 
-   // src2: Sequential values matrix
-   for (size_t i = 0; i < K * N; i++)
-   {
-       src2_ptr_f16[i] = i * 1.123f;
-   }
+    // Otherwise if M, N, K is given, fill in with random values
+    if(!default_input)
+    {
+        fill_random_tensor(src1_f16, 0.f, 1.f);
+        fill_random_tensor(src2_f16, 0.f, 1.f);
+    }
 
-   // Otherwise if M, N, K is given, fill in with random values
-   if (!default_input)
-   {
-       fill_random_tensor(src1_f16, 0.f, 1.f);
-       fill_random_tensor(src2_f16, 0.f, 1.f);
-   }
+    // Run single precision gemm f16 and print result
+    print_results(count_iter, [&]
+                  { fgemm_f16.run(); }, "fp16 time");
 
-   // Run single precision gemm f16 and print result
-   print_results(count_iter, [&] {fgemm_f16.run();}, "fp16 time");
+    /*** Quantised asymmetric 8bit matrix  multiplication ***/
 
-   /*** Quantised asymmetric 8bit matrix  multiplication ***/
+    // Start by finding the quantisation parameters for each set of values
+    float src1_min;
+    float src1_max;
+    float src2_min;
+    float src2_max;
+    float dst0_min;
+    float dst0_max;
 
-   // Start by finding the quantisation parameters for each set of values
-   float src1_min;
-   float src1_max;
-   float src2_min;
-   float src2_max;
-   float dst0_min;
-   float dst0_max;
+    find_min_max(M * K, src1_ptr, &src1_min, &src1_max);
+    find_min_max(K * N, src2_ptr, &src2_min, &src2_max);
+    find_min_max(M * N, dst0_ptr, &dst0_min, &dst0_max);
 
-   find_min_max(M * K, src1_ptr, &src1_min, &src1_max);
-   find_min_max(K * N, src2_ptr, &src2_min, &src2_max);
-   find_min_max(M * N, dst0_ptr, &dst0_min, &dst0_max);
+    const QuantizationInfo src1_qinfo = choose_quantization_params(src1_min, src1_max);
+    const QuantizationInfo src2_qinfo = choose_quantization_params(src2_min, src2_max);
+    const QuantizationInfo dst0_qinfo = choose_quantization_params(dst0_min, dst0_max);
 
-   const QuantizationInfo src1_qinfo = choose_quantization_params(src1_min, src1_max);
-   const QuantizationInfo src2_qinfo = choose_quantization_params(src2_min, src2_max);
-   const QuantizationInfo dst0_qinfo = choose_quantization_params(dst0_min, dst0_max);
+    //   std::cout << "Matrix 1: min=" << src1_min << ", max=" << src1_max << ", ";
+    //   std::cout << "QuantisationInfo(" << src1_qinfo.scale()[0] << ", " << src1_qinfo.offset()[0] << ")\n";
+    //   std::cout << "Matrix 2: min=" << src2_min << ", max=" << src2_max << ", ";
+    //   std::cout << "QuantisationInfo(" << src2_qinfo.scale()[0] << ", " << src2_qinfo.offset()[0] << ")\n";
+    //   std::cout << "Result  : min=" << dst0_min << ", max=" << dst0_max << ", ";
+    //   std::cout << "QuantisationInfo(" << dst0_qinfo.scale()[0] << ", " << dst0_qinfo.offset()[0] << ")\n";
 
-//   std::cout << "Matrix 1: min=" << src1_min << ", max=" << src1_max << ", ";
-//   std::cout << "QuantisationInfo(" << src1_qinfo.scale()[0] << ", " << src1_qinfo.offset()[0] << ")\n";
-//   std::cout << "Matrix 2: min=" << src2_min << ", max=" << src2_max << ", ";
-//   std::cout << "QuantisationInfo(" << src2_qinfo.scale()[0] << ", " << src2_qinfo.offset()[0] << ")\n";
-//   std::cout << "Result  : min=" << dst0_min << ", max=" << dst0_max << ", ";
-//   std::cout << "QuantisationInfo(" << dst0_qinfo.scale()[0] << ", " << dst0_qinfo.offset()[0] << ")\n";
+#ifdef enableTransferTensorsWithoutQuantINfo
+    Tensor     q_src1_tmp;
+    Tensor     q_src2_tmp;
+    q_src1_tmp.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
+    q_src2_tmp.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
+    NEQuantizationLayer q1_tmp;
+    NEQuantizationLayer q2_tmp;
+    q1_tmp.configure(&src1, &q_src1_tmp);
+    q2_tmp.configure(&src2, &q_src2_tmp);
+    q_src1_tmp.allocator()->allocate();
+    q_src2_tmp.allocator()->allocate();
+    q1_tmp.run();
+    q2_tmp.run();
+#endif
+    // We now have the quantisation info and can configure the quantised tensors
+#ifdef enableTransferTensorsWithoutQuantINfo
+    q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, QuantizationInfo()));
+    q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, QuantizationInfo()));
+#else
+    q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
+    q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
+#endif
+    q_dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
 
-   // We now have the quantisation info and can configure the quantised tensors
-   q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
-   q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
-   q_dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
-
-   // In this approach we use the QuantizationLayer construct to perform quantization
+    // In this approach we use the QuantizationLayer construct to perform quantization
+#ifndef enableTransferTensorsWithoutQuantINfo
    NEQuantizationLayer q1;
    NEQuantizationLayer q2;
-   NEQuantizationLayer q3;
+#endif
+    NEQuantizationLayer q3;
+#ifndef enableTransferTensorsWithoutQuantINfo
    q1.configure(&src1, &q_src1);
    q2.configure(&src2, &q_src2);
-   q3.configure(&dst0, &q_dst0);
+#endif
+    q3.configure(&dst0, &q_dst0);
 
-   // Configure low precision gemm and initialise result tensor (pre-output)
-   NEGEMMLowpMatrixMultiplyCore qgemm;
-   q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
-   qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
+    // Configure low precision gemm and initialise result tensor (pre-output)
+    NEGEMMLowpMatrixMultiplyCore qgemm;
+    q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
+    qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
 
-   // Configure output stage after computing shift and multiplier parameters
-   NEGEMMLowpOutputStage gemmlowp_output_stage;
-   int                   output_multiplier;
-   int                   output_shift;
-   float multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
-   quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
-//   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
+    // Configure output stage after computing shift and multiplier parameters
+    NEGEMMLowpOutputStage gemmlowp_output_stage;
+    int                   output_multiplier;
+    int                   output_shift;
+    float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
+    quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
+    //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
 
-   GEMMLowpOutputStageInfo info;
-   info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
-   info.gemmlowp_multiplier = output_multiplier;
-   info.gemmlowp_shift      = output_shift;
-   info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
-   info.output_data_type    = DataType::QASYMM8;
-   q_res_output.info()->set_data_type(DataType::QASYMM8);
-   q_res_output.info()->set_num_channels(1);
-   gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+    GEMMLowpOutputStageInfo info;
+    info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
+    info.gemmlowp_multiplier = output_multiplier;
+    info.gemmlowp_shift      = output_shift;
+    info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
+    info.output_data_type    = DataType::QASYMM8;
+    q_res_output.info()->set_data_type(DataType::QASYMM8);
+    q_res_output.info()->set_num_channels(1);
+    gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
 
-   // Allocate all tensors
-   q_src1.allocator()->allocate();
-   q_src2.allocator()->allocate();
-   q_dst0.allocator()->allocate();
-   q_res.allocator()->allocate();
-   q_res_output.allocator()->allocate();
+    // Allocate all tensors
+#ifdef enableTransferTensorsWithoutQuantINfo
+    q_src1.allocator()->import_memory(q_src1_tmp.allocator()->data());
+    q_src2.allocator()->import_memory(q_src2_tmp.allocator()->data());
+#else
+    q_src1.allocator()->allocate();
+    q_src2.allocator()->allocate();
+#endif
+    q_dst0.allocator()->allocate();
+    q_res.allocator()->allocate();
+    q_res_output.allocator()->allocate();
 
-   // Run quantization layers (quantizes values of each tensor)
-   q1.run();
-   q2.run();
-   q3.run();
-   // Run low precision matrix multiply kernel
-   print_results(count_iter,[&]{ qgemm.run(); }, "int8 time");
-   // Run output stage kernel
-   gemmlowp_output_stage.run();
+    // Run quantization layers (quantizes values of each tensor)
+#ifndef enableTransferTensorsWithoutQuantINfo
+    q1.run();
+    q2.run();
+#endif
+    q3.run();
+    // Run low precision matrix multiply kernel
+    print_results(count_iter, [&]
+                  { qgemm.run(); }, "int8 time");
+    auto *dst8_ptr = reinterpret_cast<uint8_t *>(q_res.buffer());
 
-   std::cout << "\nTest Passed\n";
+    for(int i = 0; i < 10; i++)
+    {
+        std::cout << (int)dst8_ptr[i] << " ";
+    }
+    std::cout << std::endl;
+
+    // Run output stage kernel
+    gemmlowp_output_stage.run();
+
+    std::cout << "\nTest Passed\n";
 }
