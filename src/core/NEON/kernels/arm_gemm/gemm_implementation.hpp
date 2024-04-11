@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <iostream>
 
 namespace arm_gemm {
 
@@ -97,23 +98,31 @@ struct GemmImplementation {
     }
 
     GemmImplementation(const GemmImplementation &) = default;
-    GemmImplementation & operator= (const GemmImplementation &) = default;
+    GemmImplementation & operator= (const GemmImplementation &) {
+        std::cout << this->name << std::endl;
+    }
 
-    GemmImplementation(GemmMethod m, const char * n) : method(m), name(n) {}
+    GemmImplementation(GemmMethod m, const char * n) : method(m), name(n) {
+        std::cout << this->name << std::endl;
+    }
 
     GemmImplementation(GemmMethod m, const char *n,
                        std::function<bool(const GemmArgs &, const OutputStage &)> is_supported, std::function<bool(const GemmArgs &, const OutputStage &)> is_recommended,
                        std::function<GemmCommon<Top, Tret> *(const GemmArgs &, const OutputStage &)> instantiate) :
                        method(m), name(n), is_supported(is_supported),
                        cycle_estimate( [is_recommended](const GemmArgs &args, const OutputStage &os) { return (is_recommended == nullptr) ? 0 : (is_recommended(args, os) ? 0 : UINT64_MAX); } ),
-                       instantiate(instantiate) {   }
+                       instantiate(instantiate) {
+        std::cout << this->name << std::endl;
+    }
 
     GemmImplementation(GemmMethod m, const char *n, KernelWeightFormat kwf,
                        std::function<bool(const GemmArgs &, const OutputStage &)> is_supported, std::function<bool(const GemmArgs &, const OutputStage &)> is_recommended,
                        std::function<GemmCommon<Top, Tret> *(const GemmArgs &, const OutputStage &)> instantiate) :
                        method(m), name(n), kernel_weight_format(kwf), is_supported(is_supported),
                        cycle_estimate( [is_recommended](const GemmArgs &args, const OutputStage &os) { return (is_recommended == nullptr) ? 0 : (is_recommended(args, os) ? 0 : UINT64_MAX); } ),
-                       instantiate(instantiate) {   }
+                       instantiate(instantiate) {
+        std::cout << this->name << std::endl;
+    }
 };
 
 /* Slightly different version of above for straightforward GEMMs with no
