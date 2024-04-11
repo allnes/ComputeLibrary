@@ -151,95 +151,105 @@ int main(int argc, char **argv)
 
     /*** Floating point matrix multiplication ***/
 
-    // Initialise input matrices
-    NEGEMM fgemm{};
+    float * src1_ptr;
+    float * src2_ptr;
+    float * dst0_ptr;
 
-    src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F32));
-    src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F32));
-    dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F32));
-    fgemm.configure(&src1, &src2, nullptr, &dst0, 1, 0);
-
-    // Allocate matrices
-    src1.allocator()->allocate();
-    src2.allocator()->allocate();
-    dst0.allocator()->allocate();
-
-    // Fill in tensors, by default fill in with known data - for easy testing
-    auto *src1_ptr = reinterpret_cast<float *>(src1.buffer());
-    auto *src2_ptr = reinterpret_cast<float *>(src2.buffer());
-    auto *dst0_ptr = reinterpret_cast<float *>(dst0.buffer());
-
-    // Fill in: one is the identity matrix, other is sequential values
-    // src1: Identity matrix
-    for(size_t i = 0; i < M * K; i++)
+    std::cout << " === f32 -> gemm -> f32 === " << std::endl;
     {
-        src1_ptr[i] = 0;
-    }
-    for(size_t i = 0; i < M; i++)
-    {
-        src1_ptr[i * K + i] = 1.0f;
-    }
+        // Initialise input matrices
+        NEGEMM fgemm{};
 
-    // src2: Sequential values matrix
-    for(size_t i = 0; i < K * N; i++)
-    {
-        src2_ptr[i] = i * 1.123f;
-    }
+        src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F32));
+        src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F32));
+        dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F32));
+        fgemm.configure(&src1, &src2, nullptr, &dst0, 1, 0);
 
-    // Otherwise if M, N, K is given, fill in with random values
-    if(!default_input)
-    {
-        fill_random_tensor(src1, 0.f, 1.f);
-        fill_random_tensor(src2, 0.f, 1.f);
-    }
+        // Allocate matrices
+        src1.allocator()->allocate();
+        src2.allocator()->allocate();
+        dst0.allocator()->allocate();
 
-    // Run single precision gemm and print result
-    print_results(count_iter, [&]
-                  { fgemm.run(); }, "fp32 time");
+        // Fill in tensors, by default fill in with known data - for easy testing
+        src1_ptr = reinterpret_cast<float *>(src1.buffer());
+        src2_ptr = reinterpret_cast<float *>(src2.buffer());
+        dst0_ptr = reinterpret_cast<float *>(dst0.buffer());
 
-    NEGEMM fgemm_f16{};
-    src1_f16.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F16));
-    src2_f16.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F16));
-    dst0_f16.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F16));
-    fgemm_f16.configure(&src1_f16, &src2_f16, nullptr, &dst0_f16, 1, 0);
+        // Fill in: one is the identity matrix, other is sequential values
+        // src1: Identity matrix
+        for(size_t i = 0; i < M * K; i++)
+        {
+            src1_ptr[i] = 0;
+        }
+        for(size_t i = 0; i < M; i++)
+        {
+            src1_ptr[i * K + i] = 1.0f;
+        }
 
-    // Allocate matrices
-    src1_f16.allocator()->allocate();
-    src2_f16.allocator()->allocate();
-    dst0_f16.allocator()->allocate();
+        // src2: Sequential values matrix
+        for(size_t i = 0; i < K * N; i++)
+        {
+            src2_ptr[i] = i * 1.123f;
+        }
 
-    // Fill in tensors, by default fill in with known data - for easy testing
-    auto *src1_ptr_f16 = reinterpret_cast<float16_t *>(src1_f16.buffer());
-    auto *src2_ptr_f16 = reinterpret_cast<float16_t *>(src2_f16.buffer());
-    auto *dst0_ptr_f16 = reinterpret_cast<float16_t *>(dst0_f16.buffer());
+        // Otherwise if M, N, K is given, fill in with random values
+        if(!default_input)
+        {
+            fill_random_tensor(src1, 0.f, 1.f);
+            fill_random_tensor(src2, 0.f, 1.f);
+        }
 
-    // Fill in: one is the identity matrix, other is sequential values
-    // src1: Identity matrix
-    for(size_t i = 0; i < M * K; i++)
-    {
-        src1_ptr_f16[i] = 0;
-    }
-    for(size_t i = 0; i < M; i++)
-    {
-        src1_ptr_f16[i * K + i] = 1.0f;
+        // Run single precision gemm and print result
+        print_results(count_iter, [&]
+                      { fgemm.run(); }, "fp32 time");
     }
 
-    // src2: Sequential values matrix
-    for(size_t i = 0; i < K * N; i++)
+    std::cout << " === f16 -> gemm -> f16 === " << std::endl;
     {
-        src2_ptr_f16[i] = i * 1.123f;
-    }
+        NEGEMM fgemm_f16{};
+        src1_f16.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::F16));
+        src2_f16.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::F16));
+        dst0_f16.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::F16));
+        fgemm_f16.configure(&src1_f16, &src2_f16, nullptr, &dst0_f16, 1, 0);
 
-    // Otherwise if M, N, K is given, fill in with random values
-    if(!default_input)
-    {
-        fill_random_tensor(src1_f16, 0.f, 1.f);
-        fill_random_tensor(src2_f16, 0.f, 1.f);
-    }
+        // Allocate matrices
+        src1_f16.allocator()->allocate();
+        src2_f16.allocator()->allocate();
+        dst0_f16.allocator()->allocate();
 
-    // Run single precision gemm f16 and print result
-    print_results(count_iter, [&]
-                  { fgemm_f16.run(); }, "fp16 time");
+        // Fill in tensors, by default fill in with known data - for easy testing
+        auto *src1_ptr_f16 = reinterpret_cast<float16_t *>(src1_f16.buffer());
+        auto *src2_ptr_f16 = reinterpret_cast<float16_t *>(src2_f16.buffer());
+        auto *dst0_ptr_f16 = reinterpret_cast<float16_t *>(dst0_f16.buffer());
+
+        // Fill in: one is the identity matrix, other is sequential values
+        // src1: Identity matrix
+        for(size_t i = 0; i < M * K; i++)
+        {
+            src1_ptr_f16[i] = 0;
+        }
+        for(size_t i = 0; i < M; i++)
+        {
+            src1_ptr_f16[i * K + i] = 1.0f;
+        }
+
+        // src2: Sequential values matrix
+        for(size_t i = 0; i < K * N; i++)
+        {
+            src2_ptr_f16[i] = i * 1.123f;
+        }
+
+        // Otherwise if M, N, K is given, fill in with random values
+        if(!default_input)
+        {
+            fill_random_tensor(src1_f16, 0.f, 1.f);
+            fill_random_tensor(src2_f16, 0.f, 1.f);
+        }
+
+        // Run single precision gemm f16 and print result
+        print_results(count_iter, [&]
+                      { fgemm_f16.run(); }, "fp16 time");
+    }
 
     /*** Quantised asymmetric 8bit matrix  multiplication ***/
 
@@ -265,9 +275,74 @@ int main(int argc, char **argv)
     //   std::cout << "QuantisationInfo(" << src2_qinfo.scale()[0] << ", " << src2_qinfo.offset()[0] << ")\n";
     //   std::cout << "Result  : min=" << dst0_min << ", max=" << dst0_max << ", ";
     //   std::cout << "QuantisationInfo(" << dst0_qinfo.scale()[0] << ", " << dst0_qinfo.offset()[0] << ")\n";
-    std::vector<float *> dst8_ptr(2);
+    std::vector<int *> dst32_ptr(2);
+    std::vector<int8_t *> dst8_ptr(2);
 
-    std::cout << " === Quantization pipeline without QuantizationInfo === " << std::endl;
+    std::cout << " === gemm(s8, s8) -> s32 -> gemmlowp_output_stage -> s8 === " << std::endl;
+    {
+        Tensor q_src1;
+        Tensor q_src2;
+        Tensor q_dst0;
+        Tensor q_res;
+        Tensor q_res_output;
+        // We now have the quantisation info and can configure the quantised tensors
+        q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
+        q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
+        q_dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
+
+        // In this approach we use the QuantizationLayer construct to perform quantization
+        NEQuantizationLayer q1;
+        NEQuantizationLayer q2;
+        NEQuantizationLayer q3;
+        q1.configure(&src1, &q_src1);
+        q2.configure(&src2, &q_src2);
+        q3.configure(&dst0, &q_dst0);
+
+        // Configure low precision gemm and initialise result tensor (pre-output)
+        NEGEMMLowpMatrixMultiplyCore qgemm;
+        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
+        qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
+
+        // Configure output stage after computing shift and multiplier parameters
+        NEGEMMLowpOutputStage gemmlowp_output_stage;
+        int                   output_multiplier;
+        int                   output_shift;
+        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
+        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
+        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
+
+        GEMMLowpOutputStageInfo info;
+        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
+        info.gemmlowp_multiplier = output_multiplier;
+        info.gemmlowp_shift      = output_shift;
+        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
+        info.output_data_type    = DataType::QASYMM8;
+        q_res_output.info()->set_data_type(DataType::QASYMM8);
+        q_res_output.info()->set_num_channels(1);
+        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+
+        // Allocate all tensors
+        q_src1.allocator()->allocate();
+        q_src2.allocator()->allocate();
+        q_dst0.allocator()->allocate();
+        q_res.allocator()->allocate();
+        q_res_output.allocator()->allocate();
+
+        // Run quantization layers (quantizes values of each tensor)
+        q1.run();
+        q2.run();
+        q3.run();
+        // Run low precision matrix multiply kernel
+        print_results(count_iter, [&]
+                      { qgemm.run(); }, "int8 time");
+
+        // Run output stage kernel
+        gemmlowp_output_stage.run();
+        dst32_ptr[0] = reinterpret_cast<int *>(q_res.buffer());
+        dst8_ptr[0] = reinterpret_cast<int8_t *>(q_res_output.buffer());
+    }
+
+    std::cout << " === gemm(i8(QI empty), i8(QI empty)) -> s32 -> gemmlowp_output_stage -> s8 === " << std::endl;
     {
         Tensor q_src1;
         Tensor q_src2;
@@ -335,16 +410,14 @@ int main(int argc, char **argv)
 
         // Run output stage kernel
         gemmlowp_output_stage.run();
-        dst8_ptr[0] = reinterpret_cast<float *>(q_res.buffer());
+        dst32_ptr[1] = reinterpret_cast<int *>(q_res.buffer());
     }
 
-    std::cout << " === Quantization original pipeline === " << std::endl;
+    std::cout << " === gemm(s8, s8) -> (requant) -> s8 === " << std::endl;
     {
         Tensor q_src1;
         Tensor q_src2;
         Tensor q_dst0;
-        Tensor q_res;
-        Tensor q_res_output;
         // We now have the quantisation info and can configure the quantised tensors
         q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
         q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
@@ -360,33 +433,12 @@ int main(int argc, char **argv)
 
         // Configure low precision gemm and initialise result tensor (pre-output)
         NEGEMMLowpMatrixMultiplyCore qgemm;
-        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
-        qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
-
-        // Configure output stage after computing shift and multiplier parameters
-        NEGEMMLowpOutputStage gemmlowp_output_stage;
-        int                   output_multiplier;
-        int                   output_shift;
-        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
-        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
-        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
-
-        GEMMLowpOutputStageInfo info;
-        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
-        info.gemmlowp_multiplier = output_multiplier;
-        info.gemmlowp_shift      = output_shift;
-        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
-        info.output_data_type    = DataType::QASYMM8;
-        q_res_output.info()->set_data_type(DataType::QASYMM8);
-        q_res_output.info()->set_num_channels(1);
-        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+        qgemm.configure(&q_src1, &q_src2, nullptr, &q_dst0);
 
         // Allocate all tensors
         q_src1.allocator()->allocate();
         q_src2.allocator()->allocate();
         q_dst0.allocator()->allocate();
-        q_res.allocator()->allocate();
-        q_res_output.allocator()->allocate();
 
         // Run quantization layers (quantizes values of each tensor)
         q1.run();
@@ -396,19 +448,26 @@ int main(int argc, char **argv)
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
 
-        // Run output stage kernel
-        gemmlowp_output_stage.run();
-        dst8_ptr[1] = reinterpret_cast<float *>(q_res.buffer());
+        dst8_ptr[1] = reinterpret_cast<int8_t *>(q_dst0.buffer());
     }
+
+    for(int i = 0; i < N * M; i++) {
+        if (dst32_ptr[0][i] != dst32_ptr[1][i]) {
+            std::cout << "\nTest Failed\n";
+            std::cout << "dst32_ptr[0]["<< i << "] = " << dst32_ptr[0][i] << "\n";
+            std::cout << "dst32_ptr[1]["<< i << "] = " << dst32_ptr[1][i] << "\n";
+            return -1;
+        }
+    }
+    std::cout << "\nEmpty QuantizationInfo Test Passed\n";
 
     for(int i = 0; i < N * M; i++) {
         if (dst8_ptr[0][i] != dst8_ptr[1][i]) {
             std::cout << "\nTest Failed\n";
-            std::cout << "dst8_ptr[0]["<< i << "] = " << dst8_ptr[0][i] << "\n";
-            std::cout << "dst8_ptr[1]["<< i << "] = " << dst8_ptr[1][i] << "\n";
+            std::cout << "dst8_ptr[0]["<< i << "] = " << static_cast<int>(dst8_ptr[0][i]) << "\n";
+            std::cout << "dst8_ptr[1]["<< i << "] = " << static_cast<int>(dst8_ptr[1][i]) << "\n";
             return -1;
         }
     }
-
-    std::cout << "\nTest Passed\n";
+    std::cout << "\nInt8 requantization Test Passed\n";
 }
