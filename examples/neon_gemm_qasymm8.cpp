@@ -34,8 +34,7 @@
 #include <chrono>
 #include <sys/sysctl.h>
 
-#define enableTransferTensorsWithoutQuantINfo1 1
-#define enableTransferTensorsWithoutQuantINfo2 0
+//#define enableTransferTensorsWithoutQuantINfo2 0
 
 using namespace arm_compute;
 using namespace utils;
@@ -268,13 +267,14 @@ int main(int argc, char **argv)
     //   std::cout << "QuantisationInfo(" << dst0_qinfo.scale()[0] << ", " << dst0_qinfo.offset()[0] << ")\n";
     std::vector<float *> dst8_ptr(2);
 
+    std::cout << " === Quantization pipeline without QuantizationInfo === " << std::endl;
     {
         Tensor q_src1;
         Tensor q_src2;
         Tensor q_dst0;
         Tensor q_res;
         Tensor q_res_output;
-#ifdef enableTransferTensorsWithoutQuantINfo1
+
         Tensor q_src1_tmp;
         Tensor q_src2_tmp;
         q_src1_tmp.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
@@ -287,171 +287,118 @@ int main(int argc, char **argv)
         q_src2_tmp.allocator()->allocate();
         q1_tmp.run();
         q2_tmp.run();
-#endif
+
         // We now have the quantisation info and can configure the quantised tensors
-#ifdef enableTransferTensorsWithoutQuantINfo1
         q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, QuantizationInfo()));
         q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, QuantizationInfo()));
-#else
-        q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
-        q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
-#endif
         q_dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
 
         // In this approach we use the QuantizationLayer construct to perform quantization
-#ifndef enableTransferTensorsWithoutQuantINfo1
-        NEQuantizationLayer q1;
-        NEQuantizationLayer q2;
-#endif
         NEQuantizationLayer q3;
-#ifndef enableTransferTensorsWithoutQuantINfo1
-        q1.configure(&src1, &q_src1);
-        q2.configure(&src2, &q_src2);
-#endif
         q3.configure(&dst0, &q_dst0);
 
         // Configure low precision gemm and initialise result tensor (pre-output)
         NEGEMMLowpMatrixMultiplyCore qgemm;
-//        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
-        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
+        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
         qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
 
-//        // Configure output stage after computing shift and multiplier parameters
-//        NEGEMMLowpOutputStage gemmlowp_output_stage;
-//        int                   output_multiplier;
-//        int                   output_shift;
-//        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
-//        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
-//        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
-//
-//        GEMMLowpOutputStageInfo info;
-//        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
-//        info.gemmlowp_multiplier = output_multiplier;
-//        info.gemmlowp_shift      = output_shift;
-//        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
-//        info.output_data_type    = DataType::QASYMM8;
-//        q_res_output.info()->set_data_type(DataType::QASYMM8);
-//        q_res_output.info()->set_num_channels(1);
-//        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+        // Configure output stage after computing shift and multiplier parameters
+        NEGEMMLowpOutputStage gemmlowp_output_stage;
+        int                   output_multiplier;
+        int                   output_shift;
+        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
+        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
+        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
+
+        GEMMLowpOutputStageInfo info;
+        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
+        info.gemmlowp_multiplier = output_multiplier;
+        info.gemmlowp_shift      = output_shift;
+        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
+        info.output_data_type    = DataType::QASYMM8;
+        q_res_output.info()->set_data_type(DataType::QASYMM8);
+        q_res_output.info()->set_num_channels(1);
+        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
 
         // Allocate all tensors
-#ifdef enableTransferTensorsWithoutQuantINfo1
         q_src1.allocator()->import_memory(q_src1_tmp.allocator()->data());
         q_src2.allocator()->import_memory(q_src2_tmp.allocator()->data());
-#else
-        q_src1.allocator()->allocate();
-        q_src2.allocator()->allocate();
-#endif
         q_dst0.allocator()->allocate();
         q_res.allocator()->allocate();
         q_res_output.allocator()->allocate();
 
         // Run quantization layers (quantizes values of each tensor)
-#ifndef enableTransferTensorsWithoutQuantINfo1
-        q1.run();
-        q2.run();
-#endif
         q3.run();
         // Run low precision matrix multiply kernel
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
-        dst8_ptr[0] = reinterpret_cast<float *>(q_res.buffer());
 
         // Run output stage kernel
-//        gemmlowp_output_stage.run();
+        gemmlowp_output_stage.run();
+        dst8_ptr[0] = reinterpret_cast<float *>(q_res.buffer());
     }
 
+    std::cout << " === Quantization original pipeline === " << std::endl;
     {
         Tensor q_src1;
         Tensor q_src2;
         Tensor q_dst0;
         Tensor q_res;
         Tensor q_res_output;
-#ifdef enableTransferTensorsWithoutQuantINfo2
-        Tensor q_src1_tmp;
-        Tensor q_src2_tmp;
-        q_src1_tmp.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
-        q_src2_tmp.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
-        NEQuantizationLayer q1_tmp;
-        NEQuantizationLayer q2_tmp;
-        q1_tmp.configure(&src1, &q_src1_tmp);
-        q2_tmp.configure(&src2, &q_src2_tmp);
-        q_src1_tmp.allocator()->allocate();
-        q_src2_tmp.allocator()->allocate();
-        q1_tmp.run();
-        q2_tmp.run();
-#endif
         // We now have the quantisation info and can configure the quantised tensors
-#ifdef enableTransferTensorsWithoutQuantINfo2
-        q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, QuantizationInfo()));
-        q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, QuantizationInfo()));
-#else
         q_src1.allocator()->init(TensorInfo(TensorShape(K, M), 1, DataType::QASYMM8, src1_qinfo));
         q_src2.allocator()->init(TensorInfo(TensorShape(N, K), 1, DataType::QASYMM8, src2_qinfo));
-#endif
         q_dst0.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
 
         // In this approach we use the QuantizationLayer construct to perform quantization
-#ifndef enableTransferTensorsWithoutQuantINfo2
         NEQuantizationLayer q1;
         NEQuantizationLayer q2;
-#endif
         NEQuantizationLayer q3;
-#ifndef enableTransferTensorsWithoutQuantINfo2
         q1.configure(&src1, &q_src1);
         q2.configure(&src2, &q_src2);
-#endif
         q3.configure(&dst0, &q_dst0);
 
         // Configure low precision gemm and initialise result tensor (pre-output)
         NEGEMMLowpMatrixMultiplyCore qgemm;
-//        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
-        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::QASYMM8, dst0_qinfo));
+        q_res.allocator()->init(TensorInfo(TensorShape(N, M), 1, DataType::S32));
         qgemm.configure(&q_src1, &q_src2, nullptr, &q_res);
 
-//        // Configure output stage after computing shift and multiplier parameters
-//        NEGEMMLowpOutputStage gemmlowp_output_stage;
-//        int                   output_multiplier;
-//        int                   output_shift;
-//        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
-//        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
-//        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
-//
-//        GEMMLowpOutputStageInfo info;
-//        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
-//        info.gemmlowp_multiplier = output_multiplier;
-//        info.gemmlowp_shift      = output_shift;
-//        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
-//        info.output_data_type    = DataType::QASYMM8;
-//        q_res_output.info()->set_data_type(DataType::QASYMM8);
-//        q_res_output.info()->set_num_channels(1);
-//        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
+        // Configure output stage after computing shift and multiplier parameters
+        NEGEMMLowpOutputStage gemmlowp_output_stage;
+        int                   output_multiplier;
+        int                   output_shift;
+        float                 multiplier = (src1_qinfo.uniform().scale * src2_qinfo.uniform().scale) / dst0_qinfo.uniform().scale;
+        quantization::calculate_quantized_multiplier_less_than_one(multiplier, &output_multiplier, &output_shift);
+        //   std::cout << "(q_multiplier, q_shift) = (" << output_multiplier << ", " << output_shift << ")\n\n";
+
+        GEMMLowpOutputStageInfo info;
+        info.type                = GEMMLowpOutputStageType::QUANTIZE_DOWN_FIXEDPOINT;
+        info.gemmlowp_multiplier = output_multiplier;
+        info.gemmlowp_shift      = output_shift;
+        info.gemmlowp_offset     = dst0_qinfo.uniform().offset;
+        info.output_data_type    = DataType::QASYMM8;
+        q_res_output.info()->set_data_type(DataType::QASYMM8);
+        q_res_output.info()->set_num_channels(1);
+        gemmlowp_output_stage.configure(&q_res, nullptr, &q_res_output, info);
 
         // Allocate all tensors
-#ifdef enableTransferTensorsWithoutQuantINfo2
-        q_src1.allocator()->import_memory(q_src1_tmp.allocator()->data());
-        q_src2.allocator()->import_memory(q_src2_tmp.allocator()->data());
-#else
         q_src1.allocator()->allocate();
         q_src2.allocator()->allocate();
-#endif
         q_dst0.allocator()->allocate();
         q_res.allocator()->allocate();
         q_res_output.allocator()->allocate();
 
         // Run quantization layers (quantizes values of each tensor)
-#ifndef enableTransferTensorsWithoutQuantINfo2
         q1.run();
         q2.run();
-#endif
         q3.run();
         // Run low precision matrix multiply kernel
         print_results(count_iter, [&]
                       { qgemm.run(); }, "int8 time");
-        dst8_ptr[1] = reinterpret_cast<float *>(q_res.buffer());
 
         // Run output stage kernel
-//        gemmlowp_output_stage.run();
+        gemmlowp_output_stage.run();
+        dst8_ptr[1] = reinterpret_cast<float *>(q_res.buffer());
     }
 
     for(int i = 0; i < N * M; i++) {
