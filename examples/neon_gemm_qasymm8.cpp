@@ -32,23 +32,36 @@
 
 #include <cstdlib>
 #include <chrono>
+#include <sys/sysctl.h>
 
 #define enableTransferTensorsWithoutQuantINfo
 
 using namespace arm_compute;
 using namespace utils;
 
-void print_results(int count, const std::function<void()>& func, const std::string& str) {
-    std::vector<double> time_list(count, 0.0);
-    for (int i = 0; i < count; i++) {
-        auto m_StartTime1 = std::chrono::system_clock::now();
-        func();
-        auto m_EndTime1 = std::chrono::system_clock::now();
-        time_list[i] = std::chrono::duration_cast<std::chrono::microseconds>(m_EndTime1 - m_StartTime1).count();
+void check_system_isa(const std::string& str) {
+    int64_t ret = 0;
+    size_t size = sizeof(ret);
+    if (sysctlbyname(str.data(), &ret, &size, NULL, 0) == 0) {
+        std::cout << "--------------" << std::endl;
+        std::cout << " Exist in system: " << str << std::endl;
+        std::cout << "--------------" << std::endl;
     }
-    std::cout << str << " avg = " << std::accumulate(time_list.begin(), time_list.end(), 0.0) / time_list.size() << std::endl;
+}
+
+void print_results(int iter_count, const std::function<void()>& perf_func, const std::string& test_name) {
+    std::vector<double> time_list(iter_count, 0.0);
+    for (int i = 0; i < iter_count; i++) {
+        auto m_StartTime = std::chrono::system_clock::now();
+        perf_func();
+        auto m_EndTime = std::chrono::system_clock::now();
+        time_list[i] = std::chrono::duration_cast<std::chrono::microseconds>(m_EndTime - m_StartTime).count();
+    }
+
     std::sort(time_list.begin(), time_list.end());
-    std::cout << str << " med = " << time_list[time_list.size() / 2] << std::endl;
+    std::cout << test_name << " median time = " << time_list[iter_count / 2] << " microsecs." << std::endl;
+    std::cout << test_name << " average time = ";
+    std::cout << accumulate(time_list.begin(), time_list.end(), 0.0) / time_list.size() << " microsecs." << std::endl;
 }
 
 // Find min and max value in a float array
@@ -111,7 +124,8 @@ void quantize_values(int size, qasymm8_t *output, float *input, const Quantizati
 
 int main(int argc, char **argv)
 {
-    const int count_iter = 100;
+    check_system_isa("hw.optional.arm.FEAT_FHM");
+    const int count_iter = 1000;
     Tensor    src1, src1_f16;
     Tensor    src2, src2_f16;
     Tensor    dst0, dst0_f16;
