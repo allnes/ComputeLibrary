@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -32,7 +32,6 @@
 #include "tests/IAccessor.h"
 #include "tests/framework/Asserts.h"
 #include "tests/framework/Fixture.h"
-#include "tests/validation/reference/LogSoftmaxLayer.h"
 #include "tests/validation/reference/SoftmaxLayer.h"
 
 #include <random>
@@ -52,23 +51,32 @@ public:
     {
         _quantization_info = quantization_info;
 
-        _target    = compute_target(shape, data_type, quantization_info, beta, axis);
         _reference = compute_reference(shape, data_type, quantization_info, beta, axis);
+        _target    = compute_target(shape, data_type, quantization_info, beta, axis);
     }
 
 protected:
     template <typename U>
     void fill(U &&tensor)
     {
-        if(!is_data_type_quantized(tensor.data_type()))
+        if(tensor.data_type() == DataType::F32)
         {
-            std::uniform_real_distribution<> distribution(-1000.f, 1000.f);
+            std::uniform_real_distribution<float> distribution(-10.0f, 10.0f);
             library->fill(tensor, distribution, 0);
         }
-        else // data type is quantized_asymmetric (signed or unsigned)
+        else if(tensor.data_type() == DataType::F16)
+        {
+            arm_compute::utils::uniform_real_distribution_16bit<half> distribution{ -10.0f, 10.0f };
+            library->fill(tensor, distribution, 0);
+        }
+        else if(!is_data_type_quantized(tensor.data_type()))
         {
             std::uniform_int_distribution<> distribution(0, 100);
             library->fill(tensor, distribution, 0);
+        }
+        else
+        {
+            library->fill_tensor_uniform(tensor, 0);
         }
     }
 
@@ -83,15 +91,15 @@ protected:
         FunctionType smx_layer;
         smx_layer.configure(&src, &dst, beta, axis);
 
-        ARM_COMPUTE_EXPECT(src.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(src.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(dst.info()->is_resizable());
 
         // Allocate tensors
         src.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!src.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!src.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(src));
@@ -111,14 +119,7 @@ protected:
         // Fill reference
         fill(src);
 
-        if(IS_LOG)
-        {
-            return reference::log_softmax_layer<T>(src, beta, axis);
-        }
-        else
-        {
-            return reference::softmax_layer<T>(src, beta, axis);
-        }
+        return reference::softmax_layer<T>(src, beta, axis, IS_LOG);
     }
 
     TensorType       _target{};
@@ -155,6 +156,7 @@ public:
                                                                                                   axis);
     }
 };
+
 } // namespace validation
 } // namespace test
 } // namespace arm_compute

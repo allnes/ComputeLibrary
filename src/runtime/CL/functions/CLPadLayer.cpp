@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,13 +22,20 @@
  * SOFTWARE.
  */
 #include "arm_compute/runtime/CL/functions/CLPadLayer.h"
+#include "src/core/CL/kernels/CLPadLayerKernel.h"
+
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
 CLPadLayer::CLPadLayer()
-    : _pad_kernel(), _copy_kernel(), _perform_pad(false)
+    : _pad_kernel(std::make_unique<CLPadLayerKernel>()),
+      _copy(),
+      _perform_pad(false)
 {
 }
+
+CLPadLayer::~CLPadLayer() = default;
 
 void CLPadLayer::configure(ICLTensor *input, ICLTensor *output, const PaddingList &padding, PixelValue constant_value, PaddingMode mode)
 {
@@ -38,6 +45,7 @@ void CLPadLayer::configure(ICLTensor *input, ICLTensor *output, const PaddingLis
 void CLPadLayer::configure(const CLCompileContext &compile_context, ICLTensor *input, ICLTensor *output, const PaddingList &padding, PixelValue constant_value, PaddingMode mode)
 {
     ARM_COMPUTE_ERROR_THROW_ON(validate(input->info(), output->info(), padding, constant_value, mode));
+    ARM_COMPUTE_LOG_PARAMS(input, output, padding, constant_value, mode);
 
     _perform_pad = std::any_of(padding.begin(), padding.end(), [](PaddingInfo info)
     {
@@ -46,12 +54,12 @@ void CLPadLayer::configure(const CLCompileContext &compile_context, ICLTensor *i
 
     if(_perform_pad)
     {
-        _pad_kernel.configure(compile_context, input, output, padding, constant_value, mode);
+        _pad_kernel->configure(compile_context, input, output, padding, constant_value, mode);
     }
     else
     {
         // Copy the input to the whole output if no padding is applied
-        _copy_kernel.configure(compile_context, input, output);
+        _copy.configure(compile_context, input, output);
     }
 }
 Status CLPadLayer::validate(const ITensorInfo *input, const ITensorInfo *output, const PaddingList &padding, PixelValue constant_value, PaddingMode mode)
@@ -67,9 +75,7 @@ Status CLPadLayer::validate(const ITensorInfo *input, const ITensorInfo *output,
     }
     else
     {
-        Window copy_window = Window();
-        copy_window.use_tensor_dimensions(output->tensor_shape());
-        ARM_COMPUTE_RETURN_ON_ERROR(CLCopyKernel::validate(input, output, PaddingList(), &copy_window));
+        ARM_COMPUTE_RETURN_ON_ERROR(CLCopy::validate(input, output));
     }
     return Status{};
 }
@@ -77,11 +83,11 @@ void CLPadLayer::run()
 {
     if(_perform_pad)
     {
-        CLScheduler::get().enqueue(_pad_kernel);
+        CLScheduler::get().enqueue(*_pad_kernel);
     }
     else
     {
-        CLScheduler::get().enqueue(_copy_kernel);
+        _copy.run();
     }
 }
 } // namespace arm_compute

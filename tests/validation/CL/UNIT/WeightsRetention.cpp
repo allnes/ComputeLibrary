@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 #include "arm_compute/runtime/CL/functions/CLFullyConnectedLayer.h"
+#include "src/core/CL/kernels/CLFillBorderKernel.h"
 #include "tests/AssetsLibrary.h"
 #include "tests/CL/CLAccessor.h"
 #include "tests/Globals.h"

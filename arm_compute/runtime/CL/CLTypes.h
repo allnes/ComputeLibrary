@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -23,24 +23,15 @@
  */
 #ifndef ARM_COMPUTE_RUNTIME_CLTYPES_H
 #define ARM_COMPUTE_RUNTIME_CLTYPES_H
+#include "arm_compute/core/Types.h"
 
 namespace arm_compute
 {
 /** OpenCL GEMM kernel types */
 enum class CLGEMMKernelType
 {
-    /** Native GEMM kernel with fixed block size.
-     * @note Temporary variant to keep compatibility with the old implementation.
-     * @note This variant will be deprecated in favor of a new and configurable NATIVE variant
-     */
-    NATIVE_V1,
     /** Native GEMM kernel with configurable block size.*/
     NATIVE,
-    /** Reshaped GEMM kernel where both lhs and rhs matrices are reshaped. Fixed block size fixed.
-     * @note Temporary variant to keep compatibility with the old implementation.
-     * @note This variant will be deprecated in favor of RESHAPED
-     */
-    RESHAPED_V1,
     /** Reshaped GEMM kernel where both lhs and rhs matrices are reshaped. Configurable reshape and block size */
     RESHAPED,
     /** Reshaped GEMM kernel where only the rhs matrix is reshaped. Configurable reshape and block size */
@@ -53,8 +44,16 @@ struct CLGEMMKernelSelectionParams
     unsigned int m{ 0 };                         /**< Number of rows for the lhs matrix. Lhs matrix NOT transposed */
     unsigned int n{ 0 };                         /**< Number of columns for the rhs matrix. Rhs matrix NOT transposed */
     unsigned int k{ 0 };                         /**< Number of rows for the rhs matrix. Rhs matrix NOT transposed */
+    unsigned int b{ 0 };                         /**< Batch size */
     bool         is_rhs_constant{ false };       /**< True if the content of the rhs matrix is constant */
     DataType     data_type{ DataType::UNKNOWN }; /**< Data type */
+};
+
+/** List the possible OpenCL backends */
+enum class CLBackendType
+{
+    Native, /**< OpenCL native backend */
+    Clvk,   /**< CLVK backend */
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_RUNTIME_CLTYPES_H */

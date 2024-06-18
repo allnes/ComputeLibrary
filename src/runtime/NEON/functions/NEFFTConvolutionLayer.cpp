@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,8 +26,15 @@
 #include "arm_compute/core/ITensor.h"
 #include "arm_compute/core/Utils.h"
 #include "arm_compute/core/Validate.h"
-#include "arm_compute/core/utils/helpers/fft.h"
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
+#include "src/common/utils/Log.h"
+#include "src/core/NEON/kernels/NEFFTDigitReverseKernel.h"
+#include "src/core/NEON/kernels/NEFFTRadixStageKernel.h"
+#include "src/core/NEON/kernels/NEFFTScaleKernel.h"
+#include "src/core/NEON/kernels/NEPadLayerKernel.h"
+#include "src/core/NEON/kernels/NEReductionOperationKernel.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/utils/helpers/fft.h"
 
 namespace arm_compute
 {
@@ -93,10 +100,14 @@ NEFFTConvolutionLayer::NEFFTConvolutionLayer(std::shared_ptr<IMemoryManager> mem
       _is_prepared(false)
 {
 }
+NEFFTConvolutionLayer::~NEFFTConvolutionLayer() = default;
 
 void NEFFTConvolutionLayer::configure(ITensor *input, const ITensor *weights, const ITensor *biases, ITensor *output, const PadStrideInfo &conv_info,
-                                      const ActivationLayerInfo &act_info)
+                                      const ActivationLayerInfo &act_info, bool enable_fast_math)
 {
+    ARM_COMPUTE_UNUSED(enable_fast_math);
+    ARM_COMPUTE_LOG_PARAMS(input, weights, biases, output, conv_info, act_info, enable_fast_math);
+
     _original_weights = weights;
     _original_bias    = biases;
 
@@ -151,7 +162,7 @@ void NEFFTConvolutionLayer::configure(ITensor *input, const ITensor *weights, co
     _pad_weights_func.configure(&_flipped_weights, &_padded_weights, padding_w);
 
     // Transform weights
-    _transform_weights_func = support::cpp14::make_unique<NEFFT2D>();
+    _transform_weights_func = std::make_unique<NEFFT2D>();
     _transform_weights_func->configure(&_padded_weights, &_transformed_weights, FFT2DInfo());
 
     // Pad input
@@ -250,8 +261,10 @@ void NEFFTConvolutionLayer::configure(ITensor *input, const ITensor *weights, co
 }
 
 Status NEFFTConvolutionLayer::validate(const ITensorInfo *input, const ITensorInfo *weights, const ITensorInfo *biases, const ITensorInfo *output, const PadStrideInfo &conv_info,
-                                       const ActivationLayerInfo &act_info)
+                                       const ActivationLayerInfo &act_info, bool enable_fast_math)
 {
+    ARM_COMPUTE_UNUSED(enable_fast_math);
+
     ARM_COMPUTE_RETURN_ERROR_ON_DATA_TYPE_CHANNEL_NOT_IN(input, 1, DataType::F32);
     ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_DATA_TYPES(input, weights);
 

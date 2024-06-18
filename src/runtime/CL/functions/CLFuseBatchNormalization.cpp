@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -28,13 +28,18 @@
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
+#include "src/core/CL/kernels/CLFuseBatchNormalizationKernel.h"
+
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
 CLFuseBatchNormalization::CLFuseBatchNormalization()
-    : _fuse_bn_kernel()
+    : _fuse_bn_kernel(std::make_unique<CLFuseBatchNormalizationKernel>())
 {
 }
+
+CLFuseBatchNormalization::~CLFuseBatchNormalization() = default;
 
 void CLFuseBatchNormalization::configure(const ICLTensor *input_weights, const ICLTensor *bn_mean, const ICLTensor *bn_var,
                                          ICLTensor *fused_weights, ICLTensor *fused_bias,
@@ -49,7 +54,8 @@ void CLFuseBatchNormalization::configure(const CLCompileContext &compile_context
                                          const ICLTensor *input_bias, const ICLTensor *bn_beta, const ICLTensor *bn_gamma,
                                          float epsilon, FuseBatchNormalizationType fbn_type)
 {
-    _fuse_bn_kernel.configure(compile_context, input_weights, bn_mean, bn_var, fused_weights, fused_bias, input_bias, bn_beta, bn_gamma, epsilon, fbn_type);
+    ARM_COMPUTE_LOG_PARAMS(input_weights, bn_mean, bn_var, fused_weights, fused_bias, input_bias, bn_beta, bn_gamma, epsilon, fbn_type);
+    _fuse_bn_kernel->configure(compile_context, input_weights, bn_mean, bn_var, fused_weights, fused_bias, input_bias, bn_beta, bn_gamma, epsilon, fbn_type);
 }
 
 Status CLFuseBatchNormalization::validate(const ITensorInfo *input_weights, const ITensorInfo *bn_mean, const ITensorInfo *bn_var,
@@ -62,6 +68,6 @@ Status CLFuseBatchNormalization::validate(const ITensorInfo *input_weights, cons
 
 void CLFuseBatchNormalization::run()
 {
-    CLScheduler::get().enqueue(_fuse_bn_kernel, true);
+    CLScheduler::get().enqueue(*_fuse_bn_kernel, true);
 }
 } // namespace arm_compute

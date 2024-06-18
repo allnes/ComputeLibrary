@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/NEON/kernels/NEDepthwiseConvolutionLayerNativeKernel.h"
+#include "src/cpu/kernels/CpuDepthwiseConv2dNativeKernel.h"
 #include "tests/NEON/Accessor.h"
 #include "tests/NEON/Helper.h"
 #include "tests/framework/Macros.h"
@@ -37,12 +37,12 @@ namespace validation
 {
 using namespace arm_compute::misc::shape_calculator;
 
-// Create function for NEDepthwiseConvolutionLayerKernel
-using NEDepthwiseConvolutionLayerNative = NESynthetizeFunctionWithZeroConstantKernelBorder<NEDepthwiseConvolutionLayerNativeKernel>;
+// Create function for CpuDepthwiseConvolutionKernel
+using CpuDepthwiseConvolutionNative = NESynthetizeFunctionWithZeroConstantKernelBorder<cpu::kernels::CpuDepthwiseConv2dNativeKernel>;
 
 // Fixture for NEDepthwiseConvolutionLayerKernel
 template <typename T>
-using NEDepthwiseConvolutionLayerNativeFixture = DepthwiseConvolutionLayerNativeValidationFixture<Tensor, Accessor, NEDepthwiseConvolutionLayerNative, T>;
+using CpuDepthwiseConvolutionNativeFixture = DepthwiseConvolutionLayerNativeValidationFixture<Tensor, Accessor, CpuDepthwiseConvolutionNative, T>;
 
 namespace
 {
@@ -98,78 +98,45 @@ const auto data_type_values = framework::dataset::make("data_type", { DataType::
 
 /** Data layout values to test - All */
 const auto data_layout_values = framework::dataset::make("data_layout", { DataLayout::NHWC });
-
-/** Configuration test */
-void validate_configuration(size_t width_value, size_t height_value, size_t channel_value, size_t batch_value, Size2D kernel_sz_value, size_t depth_multiplier_value, Size2D dilation_value, Size2D stride_value, bool padding_valid_value, DataType data_type_value, DataLayout data_layout_value)
-{
-    TensorShape src_shape(width_value, height_value, channel_value, batch_value);
-    TensorShape weights_shape(kernel_sz_value.width, kernel_sz_value.height, channel_value * depth_multiplier_value);
-    TensorShape biases_shape(channel_value * depth_multiplier_value);
-
-    if(data_layout_value == DataLayout::NHWC)
-    {
-        permute(src_shape, PermutationVector(2U, 0U, 1U, 3U));
-        permute(weights_shape, PermutationVector(2U, 0U, 1U));
-    }
-
-    TensorInfo src_info(src_shape, 1, data_type_value);
-    TensorInfo weights_info(weights_shape, 1, data_type_value);
-    TensorInfo biases_info(biases_shape, 1, data_type_value);
-
-    src_info.set_data_layout(data_layout_value);
-    weights_info.set_data_layout(data_layout_value);
-    biases_info.set_data_layout(data_layout_value);
-
-    PadStrideInfo conv_info;
-    if(padding_valid_value)
-    {
-        conv_info = PadStrideInfo();
-    }
-    else
-    {
-        conv_info = calculate_same_pad(src_shape, weights_shape, PadStrideInfo(stride_value.width, stride_value.height), data_layout_value, dilation_value);
-    }
-
-    const TensorShape dst_shape = compute_depthwise_convolution_shape(src_info, weights_info, conv_info, depth_multiplier_value, dilation_value);
-
-    // Create tensors
-    Tensor src      = create_tensor<Tensor>(src_shape, data_type_value, 1, QuantizationInfo(), data_layout_value);
-    Tensor weights  = create_tensor<Tensor>(weights_shape, data_type_value, 1, QuantizationInfo(), data_layout_value);
-    Tensor biases   = create_tensor<Tensor>(biases_shape, data_type_value, 1, QuantizationInfo(), data_layout_value);
-    Tensor dst      = create_tensor<Tensor>(dst_shape, data_type_value, 1, QuantizationInfo(), data_layout_value);
-
-    ARM_COMPUTE_EXPECT(src.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(weights.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(biases.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(dst.info()->is_resizable(), framework::LogLevel::ERRORS);
-
-    // Create and configure function
-    NEDepthwiseConvolutionLayerNative dwc;
-    dwc.configure(&src, &weights, &biases, &dst, conv_info, depth_multiplier_value, dilation_value);
-}
 } // namespace
 
 TEST_SUITE(NEON)
 TEST_SUITE(DepthwiseConvolutionLayerNative)
-TEST_SUITE(Float)
-TEST_SUITE(FP32)
-DATA_TEST_CASE(Configuration, framework::DatasetMode::ALL, combine(combine(combine(combine(combine(combine(combine(combine(combine(combine(width_values_precommit,
-                                                                                                                                           height_values_precommit),
-                                                                                                                                           channel_values_precommit),
-                                                                                                                                           batch_values_precommit),
-                                                                                                                                           kernel_sz_values_precommit),
-                                                                                                                                           depth_multiplier_values),
-                                                                                                                                           dilation_values),
-                                                                                                                                           stride_values),
-                                                                                                                                           padding_valid_values),
-                                                                                                                                           data_type_values),
-                                                                                                                                           data_layout_values),
-width_value, height_value, channel_value, batch_value, kernel_sz_value, depth_multiplier_value, dilation_value, stride_value, padding_valid_value, data_type_value, data_layout_value)
+
+TEST_CASE(ValidateNoPadding, framework::DatasetMode::ALL)
 {
-    validate_configuration(width_value, height_value, channel_value, batch_value, kernel_sz_value, depth_multiplier_value, dilation_value, stride_value, padding_valid_value, data_type_value, data_layout_value);
+    // this test case will ensure that the kernel is not adding implicit padding
+    constexpr uint32_t vector_size = 8; // Asummed vector size of the current native kernel
+    constexpr auto     depth = vector_size * 2 + 1; // mis-aligned depth to force padding if exists.
+    constexpr auto     data_layout = DataLayout::NHWC;
+    constexpr auto     data_type = DataType::F32;
+
+    const auto input_size  = Size2D{ 100, 100 }; // random plane size of the input
+    const auto kernel_size = Size2D{ 4, 4 }; // random plane size of the kernel
+    const auto pad_stride_info = PadStrideInfo(3, 3); // random convolution information to
+
+    TensorShape src_shape{ depth, input_size.x(), input_size.y() };
+    TensorShape weights_shape{ depth, kernel_size.x(), kernel_size.y() };
+    TensorShape bias_shape{ depth };
+
+    auto src     = create_tensor<Tensor>(src_shape, data_type, 1, QuantizationInfo(), data_layout);
+    auto weights = create_tensor<Tensor>(weights_shape, data_type, 1, QuantizationInfo(), data_layout);
+    auto biases  = create_tensor<Tensor>(bias_shape, data_type, 1, QuantizationInfo(), data_layout);
+    auto dst     = create_tensor<Tensor>(TensorShape(), data_type, 1, QuantizationInfo(), data_layout);
+
+    cpu::kernels::CpuDepthwiseConv2dNativeKernel dwc;
+    const ConvolutionInfo info{pad_stride_info, 1, ActivationLayerInfo(), Size2D(1, 1)};
+    dwc.configure(src.info(), weights.info(), biases.info(), dst.info(), info);
+
+    ARM_COMPUTE_EXPECT(src.info()->padding().empty(), framework::LogLevel::ERRORS);
+    ARM_COMPUTE_EXPECT(weights.info()->padding().empty(), framework::LogLevel::ERRORS);
+    ARM_COMPUTE_EXPECT(biases.info()->padding().empty(), framework::LogLevel::ERRORS);
+    ARM_COMPUTE_EXPECT(dst.info()->padding().empty(), framework::LogLevel::ERRORS);
 }
 
-FIXTURE_DATA_TEST_CASE(RunSmall, NEDepthwiseConvolutionLayerNativeFixture<float>, framework::DatasetMode::ALL,
+TEST_SUITE(Float)
+TEST_SUITE(FP32)
+FIXTURE_DATA_TEST_CASE_NEW(RunSmall, CpuDepthwiseConvolutionNativeFixture<float>, framework::DatasetMode::ALL,
                 combine(combine(combine(combine(combine(combine(combine(combine(combine(combine(width_values_precommit,
                                                                                                 height_values_precommit),
                                                                                                 channel_values_precommit),
@@ -186,7 +153,7 @@ FIXTURE_DATA_TEST_CASE(RunSmall, NEDepthwiseConvolutionLayerNativeFixture<float>
     validate(Accessor(_target), _reference, rel_tolerance_f32, 0.f, abs_tolerance_f32);
 }
 
-FIXTURE_DATA_TEST_CASE(RunLarge, NEDepthwiseConvolutionLayerNativeFixture<float>, framework::DatasetMode::NIGHTLY,
+FIXTURE_DATA_TEST_CASE_NEW(RunLarge, CpuDepthwiseConvolutionNativeFixture<float>, framework::DatasetMode::NIGHTLY,
                 combine(combine(combine(combine(combine(combine(combine(combine(combine(combine(width_values_nightly,
                                                                                                 height_values_nightly),
                                                                                                 channel_values_nightly),
@@ -206,7 +173,7 @@ FIXTURE_DATA_TEST_CASE(RunLarge, NEDepthwiseConvolutionLayerNativeFixture<float>
 TEST_SUITE_END() // FP32
 TEST_SUITE_END() // Float
 TEST_SUITE_END() // DepthwiseConvolutionLayerNative
-TEST_SUITE_END() // NEON
+TEST_SUITE_END() // Neon
 } // namespace validation
 } // namespace test
 } // namespace arm_compute

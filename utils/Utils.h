@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,10 +24,13 @@
 #ifndef __UTILS_UTILS_H__
 #define __UTILS_UTILS_H__
 
+/** @dir .
+ *  brief Boiler plate code used by examples. Various utilities to print types, load / store assets, etc.
+ */
+
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/ITensor.h"
 #include "arm_compute/core/Types.h"
-#include "arm_compute/core/Validate.h"
 #include "arm_compute/core/Window.h"
 #include "arm_compute/runtime/Tensor.h"
 #pragma GCC diagnostic push
@@ -35,22 +38,18 @@
 #pragma GCC diagnostic ignored "-Wstrict-overflow"
 #include "libnpy/npy.hpp"
 #pragma GCC diagnostic pop
-#include "support/MemorySupport.h"
 #include "support/StringSupport.h"
 
 #ifdef ARM_COMPUTE_CL
 #include "arm_compute/core/CL/OpenCL.h"
-#include "arm_compute/runtime/CL/CLDistribution1D.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #endif /* ARM_COMPUTE_CL */
-#ifdef ARM_COMPUTE_GC
-#include "arm_compute/runtime/GLES_COMPUTE/GCTensor.h"
-#endif /* ARM_COMPUTE_GC */
 
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <string>
 #include <tuple>
@@ -107,7 +106,7 @@ int run_example(int argc, char **argv, std::unique_ptr<Example> example);
 template <typename T>
 int run_example(int argc, char **argv)
 {
-    return run_example(argc, argv, support::cpp14::make_unique<T>());
+    return run_example(argc, argv, std::make_unique<T>());
 }
 
 /** Draw a RGB rectangular window for the detected object
@@ -245,68 +244,26 @@ inline void unmap(CLTensor &tensor)
 {
     tensor.unmap();
 }
-
-/** Maps a distribution if needed
- *
- * @param[in] distribution Distribution to be mapped
- * @param[in] blocking     Specified if map is blocking or not
- */
-inline void map(CLDistribution1D &distribution, bool blocking)
-{
-    distribution.map(blocking);
-}
-
-/** Unmaps a distribution if needed
- *
- * @param distribution  Distribution to be unmapped
- */
-inline void unmap(CLDistribution1D &distribution)
-{
-    distribution.unmap();
-}
 #endif /* ARM_COMPUTE_CL */
-
-#ifdef ARM_COMPUTE_GC
-/** Maps a tensor if needed
- *
- * @param[in] tensor   Tensor to be mapped
- * @param[in] blocking Specified if map is blocking or not
- */
-inline void map(GCTensor &tensor, bool blocking)
-{
-    tensor.map(blocking);
-}
-
-/** Unmaps a tensor if needed
- *
- * @param tensor  Tensor to be unmapped
- */
-inline void unmap(GCTensor &tensor)
-{
-    tensor.unmap();
-}
-#endif /* ARM_COMPUTE_GC */
 
 /** Specialized class to generate random non-zero FP16 values.
  *  uniform_real_distribution<half> generates values that get rounded off to zero, causing
  *  differences between ACL and reference implementation
 */
-class uniform_real_distribution_fp16
+template <typename T>
+class uniform_real_distribution_16bit
 {
-    half                                   min{ 0.0f }, max{ 0.0f };
-    std::uniform_real_distribution<float>  neg{ min, -0.3f };
-    std::uniform_real_distribution<float>  pos{ 0.3f, max };
-    std::uniform_int_distribution<uint8_t> sign_picker{ 0, 1 };
+    static_assert(std::is_same<T, half>::value || std::is_same<T, bfloat16>::value, "Only half and bfloat16 data types supported");
 
 public:
-    using result_type = half;
+    using result_type = T;
     /** Constructor
      *
-     * @param[in] a Minimum value of the distribution
-     * @param[in] b Maximum value of the distribution
+     * @param[in] min Minimum value of the distribution
+     * @param[in] max Maximum value of the distribution
      */
-    explicit uniform_real_distribution_fp16(half a = half(0.0), half b = half(1.0))
-        : min(a), max(b)
+    explicit uniform_real_distribution_16bit(float min = 0.f, float max = 1.0)
+        : dist(min, max)
     {
     }
 
@@ -314,14 +271,13 @@ public:
      *
      * @param[in] gen an uniform random bit generator object
      */
-    half operator()(std::mt19937 &gen)
+    T operator()(std::mt19937 &gen)
     {
-        if(sign_picker(gen))
-        {
-            return (half)neg(gen);
-        }
-        return (half)pos(gen);
+        return T(dist(gen));
     }
+
+private:
+    std::uniform_real_distribution<float> dist;
 };
 
 /** Numpy data loader */
@@ -562,7 +518,7 @@ void save_to_ppm(T &tensor, const std::string &ppm_filename)
         fs << "P6\n"
            << width << " " << height << " 255\n";
 
-        // Map buffer if creating a CLTensor/GCTensor
+        // Map buffer if creating a CLTensor
         map(tensor, true);
 
         switch(tensor.info()->format())
@@ -605,7 +561,7 @@ void save_to_ppm(T &tensor, const std::string &ppm_filename)
                 ARM_COMPUTE_ERROR("Unsupported format");
         }
 
-        // Unmap buffer if creating a CLTensor/GCTensor
+        // Unmap buffer if creating a CLTensor
         unmap(tensor);
     }
     catch(const std::ofstream::failure &e)
@@ -696,7 +652,7 @@ void load_trained_data(T &tensor, const std::string &filename)
             throw std::runtime_error("Could not load binary data: " + filename);
         }
 
-        // Map buffer if creating a CLTensor/GCTensor
+        // Map buffer if creating a CLTensor
         map(tensor, true);
 
         Window window;
@@ -716,7 +672,7 @@ void load_trained_data(T &tensor, const std::string &filename)
         },
         in);
 
-        // Unmap buffer if creating a CLTensor/GCTensor
+        // Unmap buffer if creating a CLTensor
         unmap(tensor);
     }
     catch(const std::ofstream::failure &e)
@@ -725,52 +681,83 @@ void load_trained_data(T &tensor, const std::string &filename)
     }
 }
 
-template <typename T>
-void fill_random_tensor(T &tensor, float lower_bound, float upper_bound)
+template <typename T, typename TensorType>
+void fill_tensor_value(TensorType &tensor, T value)
 {
-    std::random_device rd;
-    std::mt19937       gen(rd());
+    map(tensor, true);
 
     Window window;
     window.use_tensor_dimensions(tensor.info()->tensor_shape());
 
-    map(tensor, true);
-
-    Iterator it(&tensor, window);
-
-    switch(tensor.info()->data_type())
+    Iterator it_tensor(&tensor, window);
+    execute_window_loop(window, [&](const Coordinates &)
     {
-        case arm_compute::DataType::F16:
-        {
-            std::uniform_real_distribution<float> dist(lower_bound, upper_bound);
-
-            execute_window_loop(window, [&](const Coordinates &)
-            {
-                *reinterpret_cast<half *>(it.ptr()) = (half)dist(gen);
-            },
-            it);
-
-            break;
-        }
-        case arm_compute::DataType::F32:
-        {
-            std::uniform_real_distribution<float> dist(lower_bound, upper_bound);
-
-            execute_window_loop(window, [&](const Coordinates &)
-            {
-                *reinterpret_cast<float *>(it.ptr()) = dist(gen);
-            },
-            it);
-
-            break;
-        }
-        default:
-        {
-            ARM_COMPUTE_ERROR("Unsupported format");
-        }
-    }
+        *reinterpret_cast<T *>(it_tensor.ptr()) = value;
+    },
+    it_tensor);
 
     unmap(tensor);
+}
+
+template <typename T, typename TensorType>
+void fill_tensor_zero(TensorType &tensor)
+{
+    fill_tensor_value(tensor, T(0));
+}
+
+template <typename T, typename TensorType>
+void fill_tensor_vector(TensorType &tensor, std::vector<T> vec)
+{
+    ARM_COMPUTE_ERROR_ON(tensor.info()->tensor_shape().total_size() != vec.size());
+
+    map(tensor, true);
+
+    Window window;
+    window.use_tensor_dimensions(tensor.info()->tensor_shape());
+
+    int      i = 0;
+    Iterator it_tensor(&tensor, window);
+    execute_window_loop(window, [&](const Coordinates &)
+    {
+        *reinterpret_cast<T *>(it_tensor.ptr()) = vec.at(i++);
+    },
+    it_tensor);
+
+    unmap(tensor);
+}
+
+template <typename T, typename TensorType>
+void fill_random_tensor(TensorType &tensor, std::random_device::result_type seed, T lower_bound = std::numeric_limits<T>::lowest(), T upper_bound = std::numeric_limits<T>::max())
+{
+    constexpr bool is_fp_16bit = std::is_same<T, half>::value || std::is_same<T, bfloat16>::value;
+    constexpr bool is_integral = std::is_integral<T>::value && !is_fp_16bit;
+
+    using fp_dist_type = typename std::conditional<is_fp_16bit, arm_compute::utils::uniform_real_distribution_16bit<T>, std::uniform_real_distribution<T>>::type;
+    using dist_type    = typename std::conditional<is_integral, std::uniform_int_distribution<T>, fp_dist_type>::type;
+
+    std::mt19937 gen(seed);
+    dist_type    dist(lower_bound, upper_bound);
+
+    map(tensor, true);
+
+    Window window;
+    window.use_tensor_dimensions(tensor.info()->tensor_shape());
+
+    Iterator it(&tensor, window);
+    execute_window_loop(window, [&](const Coordinates &)
+    {
+        *reinterpret_cast<T *>(it.ptr()) = dist(gen);
+    },
+    it);
+
+    unmap(tensor);
+}
+
+template <typename T, typename TensorType>
+void fill_random_tensor(TensorType &tensor, T lower_bound = std::numeric_limits<T>::lowest(), T upper_bound = std::numeric_limits<T>::max())
+{
+    std::random_device rd;
+    fill_random_tensor(tensor, rd(), lower_bound, upper_bound);
 }
 
 template <typename T>

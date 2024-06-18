@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -23,7 +23,6 @@
  */
 #include "arm_compute/graph/backends/NEON/NEFunctionFactory.h"
 
-#include "arm_compute/core/utils/misc/Cast.h"
 #include "arm_compute/graph/Graph.h"
 #include "arm_compute/graph/GraphContext.h"
 #include "arm_compute/graph/Logger.h"
@@ -33,6 +32,7 @@
 #include "arm_compute/graph/nodes/Nodes.h"
 #include "arm_compute/runtime/CPP/CPPFunctions.h"
 #include "arm_compute/runtime/NEON/NEFunctions.h"
+#include "support/Cast.h"
 #include "support/ToolchainSupport.h"
 
 using namespace arm_compute::utils::cast;
@@ -54,7 +54,7 @@ struct NETargetInfo
 
 Target NETargetInfo::TargetType = Target::NEON;
 
-/** Collection of NEON convolution functions */
+/** Collection of CPU convolution functions */
 struct NEConvolutionLayerFunctions
 {
     using GenericConvolutionLayer  = NEConvolutionLayer;
@@ -63,21 +63,23 @@ struct NEConvolutionLayerFunctions
     using WinogradConvolutionLayer = NEWinogradConvolutionLayer;
 };
 
-/** Collection of NEON element-wise functions */
+/** Collection of CPU element-wise functions */
 struct NEEltwiseFunctions
 {
     using Addition       = NEArithmeticAddition;
     using Subtraction    = NEArithmeticSubtraction;
     using Multiplication = NEPixelWiseMultiplication;
+    using Maximum        = NEElementwiseMax;
+    using Division       = NEElementwiseDivision;
 };
 
-/** Collection of NEON unary element-wise functions */
+/** Collection of CPU unary element-wise functions */
 struct NEUnaryEltwiseFunctions
 {
     using Exp = NEExpLayer;
 };
 
-/** Function and tensor types to be used inside a NEON fused convolution/batch normalization layer */
+/** Function and tensor types to be used inside a fused convolution/batch normalization layer */
 struct NEFusedLayerTypes
 {
     using ConvolutionLayer          = NEConvolutionLayer;
@@ -100,7 +102,7 @@ std::unique_ptr<IFunction> create_normalization_layer<NENormalizationLayer, NETa
     ARM_COMPUTE_ERROR_ON(output == nullptr);
 
     // Create and configure function
-    auto func = support::cpp14::make_unique<NENormalizationLayer>(get_memory_manager(ctx, NETargetInfo::TargetType));
+    auto func = std::make_unique<NENormalizationLayer>(get_memory_manager(ctx, NETargetInfo::TargetType));
     func->configure(input, output, norm_info);
 
     // Log info
@@ -114,7 +116,7 @@ std::unique_ptr<IFunction> create_normalization_layer<NENormalizationLayer, NETa
                                << " Normalization info: " << norm_info.type()
                                << std::endl);
 
-    return RETURN_UNIQUE_PTR(func);
+    return std::move(func);
 }
 } // namespace detail
 
@@ -130,12 +132,16 @@ std::unique_ptr<IFunction> NEFunctionFactory::create(INode *node, GraphContext &
     {
         case NodeType::ActivationLayer:
             return detail::create_activation_layer<NEActivationLayer, NETargetInfo>(*polymorphic_downcast<ActivationLayerNode *>(node));
+        case NodeType::ArgMinMaxLayer:
+            return detail::create_arg_min_max_layer<NEArgMinMaxLayer, NETargetInfo>(*polymorphic_downcast<ArgMinMaxLayerNode *>(node));
         case NodeType::BatchNormalizationLayer:
             return detail::create_batch_normalization_layer<NEBatchNormalizationLayer, NETargetInfo>(*polymorphic_downcast<BatchNormalizationLayerNode *>(node));
         case NodeType::ChannelShuffleLayer:
             return detail::create_channel_shuffle_layer<NEChannelShuffleLayer, NETargetInfo>(*polymorphic_downcast<ChannelShuffleLayerNode *>(node));
         case NodeType::ConvolutionLayer:
             return detail::create_convolution_layer<NEConvolutionLayerFunctions, NETargetInfo>(*polymorphic_downcast<ConvolutionLayerNode *>(node), ctx);
+        case NodeType::DepthToSpaceLayer:
+            return detail::create_depth_to_space_layer<NEDepthToSpaceLayer, NETargetInfo>(*polymorphic_downcast<DepthToSpaceLayerNode *>(node));
         case NodeType::DeconvolutionLayer:
             return detail::create_deconvolution_layer<NEDeconvolutionLayer, NETargetInfo>(*polymorphic_downcast<DeconvolutionLayerNode *>(node), ctx);
         case NodeType::ConcatenateLayer:
@@ -160,6 +166,8 @@ std::unique_ptr<IFunction> NEFunctionFactory::create(INode *node, GraphContext &
             return detail::create_fused_convolution_batch_normalization_layer<NEFusedLayerTypes, NETargetInfo>(*polymorphic_downcast<FusedConvolutionBatchNormalizationNode *>(node), ctx);
         case NodeType::FusedDepthwiseConvolutionBatchNormalizationLayer:
             return detail::create_fused_depthwise_convolution_batch_normalization_layer<NEFusedLayerTypes, NETargetInfo>(*polymorphic_downcast<FusedDepthwiseConvolutionBatchNormalizationNode *>(node), ctx);
+        case NodeType::L2NormalizeLayer:
+            return detail::create_l2_normalize_layer<NEL2NormalizeLayer, NETargetInfo>(*polymorphic_downcast<L2NormalizeLayerNode *>(node), ctx);
         case NodeType::NormalizationLayer:
             return detail::create_normalization_layer<NENormalizationLayer, NETargetInfo>(*polymorphic_downcast<NormalizationLayerNode *>(node), ctx);
         case NodeType::PadLayer:
@@ -176,20 +184,22 @@ std::unique_ptr<IFunction> NEFunctionFactory::create(INode *node, GraphContext &
             return detail::create_priorbox_layer<NEPriorBoxLayer, NETargetInfo>(*polymorphic_downcast<PriorBoxLayerNode *>(node));
         case NodeType::QuantizationLayer:
             return detail::create_quantization_layer<NEQuantizationLayer, NETargetInfo>(*polymorphic_downcast<QuantizationLayerNode *>(node));
+        case NodeType::ReductionOperationLayer:
+            return detail::create_reduction_operation_layer<NEReductionOperation, NETargetInfo>(*polymorphic_downcast<ReductionLayerNode *>(node), ctx);
         case NodeType::ReorgLayer:
             return detail::create_reorg_layer<NEReorgLayer, NETargetInfo>(*polymorphic_downcast<ReorgLayerNode *>(node));
         case NodeType::ReshapeLayer:
             return detail::create_reshape_layer<NEReshapeLayer, NETargetInfo>(*polymorphic_downcast<ReshapeLayerNode *>(node));
         case NodeType::ResizeLayer:
             return detail::create_resize_layer<NEScale, NETargetInfo>(*polymorphic_downcast<ResizeLayerNode *>(node));
+        case NodeType::SliceLayer:
+            return detail::create_slice_layer<NESlice, NETargetInfo>(*polymorphic_downcast<SliceLayerNode *>(node));
         case NodeType::SoftmaxLayer:
             return detail::create_softmax_layer<NESoftmaxLayer, NETargetInfo>(*polymorphic_downcast<SoftmaxLayerNode *>(node), ctx);
         case NodeType::StackLayer:
             return detail::create_stack_layer<NEStackLayer, NETargetInfo>(*polymorphic_downcast<StackLayerNode *>(node));
-        case NodeType::UpsampleLayer:
-            return detail::create_upsample_layer<NEUpsampleLayer, NETargetInfo>(*polymorphic_downcast<UpsampleLayerNode *>(node), ctx);
-        case NodeType::YOLOLayer:
-            return detail::create_yolo_layer<NEYOLOLayer, NETargetInfo>(*polymorphic_downcast<YOLOLayerNode *>(node), ctx);
+        case NodeType::StridedSliceLayer:
+            return detail::create_strided_slice_layer<NEStridedSlice, NETargetInfo>(*polymorphic_downcast<StridedSliceLayerNode *>(node));
         default:
             return nullptr;
     }

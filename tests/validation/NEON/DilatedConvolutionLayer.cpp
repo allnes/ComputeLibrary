@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,6 +26,7 @@
 #include "arm_compute/runtime/NEON/functions/NEGEMMConvolutionLayer.h"
 #include "arm_compute/runtime/Tensor.h"
 #include "arm_compute/runtime/TensorAllocator.h"
+#include "src/cpu/operators/CpuConv2d.h"
 #include "tests/NEON/Accessor.h"
 #include "tests/PaddingCalculator.h"
 #include "tests/datasets/DilatedConvolutionLayerDataset.h"
@@ -96,7 +97,7 @@ DATA_TEST_CASE(ValidateConvolutionMethod, framework::DatasetMode::ALL, zip(zip(z
                                           framework::dataset::make("Expected", { ConvolutionMethod::GEMM, ConvolutionMethod::GEMM, ConvolutionMethod::GEMM, ConvolutionMethod::GEMM })),
                input_info, weights_info, output_info, conv_info, dilation, expected)
 {
-    ConvolutionMethod is_valid = NEConvolutionLayer::get_convolution_method(&input_info.clone()->set_is_resizable(false),
+    ConvolutionMethod is_valid = cpu::CpuConv2d::get_convolution_method(&input_info.clone()->set_is_resizable(false),
                                                                             &weights_info.clone()->set_is_resizable(false),
                                                                             &output_info.clone()->set_is_resizable(false),
                                                                             conv_info, WeightsInfo(), dilation);
@@ -107,49 +108,6 @@ DATA_TEST_CASE(ValidateConvolutionMethod, framework::DatasetMode::ALL, zip(zip(z
 TEST_SUITE_END() // DilatedConvolutionLayer
 
 TEST_SUITE(GEMMDilatedConvolutionLayer)
-
-DATA_TEST_CASE(Configuration, framework::DatasetMode::ALL, combine(datasets::SmallDilatedConvolutionLayerDataset(),
-                                                                   CNNDataTypes),
-               input_shape, weights_shape, bias_shape, output_shape, info, dilation, data_type)
-{
-    auto bias_data_type = is_data_type_quantized_asymmetric(data_type) ? DataType::S32 : data_type;
-
-    // Create tensors
-    Tensor src     = create_tensor<Tensor>(input_shape, data_type, 1, QuantizationInfo(2.f / 255.f, 127));
-    Tensor weights = create_tensor<Tensor>(weights_shape, data_type, 1, QuantizationInfo(2.f / 255.f, 127));
-    Tensor bias    = create_tensor<Tensor>(bias_shape, bias_data_type, 1, QuantizationInfo(2.f / 255.f, 127));
-    Tensor dst     = create_tensor<Tensor>(output_shape, data_type, 1, QuantizationInfo(2.f / 255.f, 127));
-
-    ARM_COMPUTE_EXPECT(src.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(weights.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(bias.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(dst.info()->is_resizable(), framework::LogLevel::ERRORS);
-
-    const QuantizationInfo src_quantization_info     = src.info()->quantization_info();
-    const QuantizationInfo weights_quantization_info = weights.info()->quantization_info();
-
-    // Create and configure function
-    NEGEMMConvolutionLayer conv;
-    conv.configure(&src, &weights, &bias, &dst, info, WeightsInfo(), dilation);
-
-    // Validate valid region
-    const ValidRegion src_valid_region     = shape_to_valid_region(input_shape);
-    const ValidRegion weights_valid_region = shape_to_valid_region(weights_shape);
-    const ValidRegion bias_valid_region    = shape_to_valid_region(bias_shape);
-    const ValidRegion dst_valid_region     = shape_to_valid_region(output_shape);
-
-    validate(src.info()->valid_region(), src_valid_region);
-    validate(weights.info()->valid_region(), weights_valid_region);
-    validate(bias.info()->valid_region(), bias_valid_region);
-    validate(dst.info()->valid_region(), dst_valid_region);
-
-    // Validate QuantizationInfo
-    ARM_COMPUTE_EXPECT(src.info()->quantization_info() == src_quantization_info, framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(weights.info()->quantization_info() == weights_quantization_info, framework::LogLevel::ERRORS);
-
-    // Validate padding
-    //TODO(COMPMID-415) Need to validate padding?
-}
 
 template <typename T>
 using NEGEMMDilatedConvolutionLayerFixture = ConvolutionValidationFixture<Tensor, Accessor, NEConvolutionLayer, T>;
@@ -231,7 +189,7 @@ TEST_SUITE_END() // QASYMM8
 TEST_SUITE_END() // Quantized
 
 TEST_SUITE_END() // GEMMDilatedConvolutionLayer
-TEST_SUITE_END() // NEON
+TEST_SUITE_END() // Neon
 } // namespace validation
 } // namespace test
 } // namespace arm_compute

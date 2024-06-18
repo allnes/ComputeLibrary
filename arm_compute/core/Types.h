@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -27,8 +27,10 @@
 #include "arm_compute/core/Coordinates.h"
 #include "arm_compute/core/QuantizationInfo.h"
 #include "arm_compute/core/Size2D.h"
+#include "arm_compute/core/Size3D.h"
 #include "arm_compute/core/Strides.h"
 #include "arm_compute/core/TensorShape.h"
+#include "arm_compute/core/experimental/IPostOp.h"
 #include "arm_compute/core/utils/misc/Macros.h"
 #include "support/Bfloat16.h"
 #include "support/Half.h"
@@ -105,15 +107,6 @@ enum class SamplingPolicy
     TOP_LEFT /**< Samples are taken at pixel top left corner */
 };
 
-/** Constant value of the border pixels when using BorderMode::CONSTANT */
-constexpr uint8_t CONSTANT_BORDER_VALUE = 199;
-
-/** Constant value used to indicate a half-scale pyramid */
-constexpr float SCALE_PYRAMID_HALF = 0.5f;
-
-/** Constant value used to indicate a ORB scaled pyramid */
-constexpr float SCALE_PYRAMID_ORB = 8.408964152537146130583778358414e-01;
-
 /** [DataLayout enum definition] **/
 
 /** Supported tensor data layouts */
@@ -121,7 +114,9 @@ enum class DataLayout
 {
     UNKNOWN, /**< Unknown data layout */
     NCHW,    /**< Num samples, channels, height, width */
-    NHWC     /**< Num samples, height, width, channels */
+    NHWC,    /**< Num samples, height, width, channels */
+    NCDHW,   /**< Num samples, channels, depth, height, width */
+    NDHWC    /**< Num samples, depth, height, width, channels */
 };
 /** [DataLayout enum definition] **/
 
@@ -131,16 +126,18 @@ enum class DataLayoutDimension
     CHANNEL, /**< channel */
     HEIGHT,  /**< height */
     WIDTH,   /**< width */
+    DEPTH,   /**< depth */
     BATCHES  /**< batches */
 };
 
 /** Available ConvolutionMethod*/
 enum class ConvolutionMethod
 {
-    GEMM,     /**< Convolution using GEMM */
-    DIRECT,   /**< Direct convolution */
-    WINOGRAD, /**< Convolution using Winograd */
-    FFT       /**< Convolution using FFT */
+    GEMM,        /**< Convolution using GEMM */
+    GEMM_CONV2D, /**< Direct 2D GEMM convolution */
+    DIRECT,      /**< Direct convolution */
+    WINOGRAD,    /**< Convolution using Winograd */
+    FFT          /**< Convolution using FFT */
 };
 
 /** Available DepthwiseConvolutionFunction*/
@@ -272,14 +269,20 @@ enum class BorderMode
 struct BorderSize
 {
     /** Empty border, i.e. no border */
-    constexpr BorderSize()
-        : top{ 0 }, right{ 0 }, bottom{ 0 }, left{ 0 }
+    constexpr BorderSize() noexcept
+        : top{ 0 },
+    right{ 0 },
+    bottom{ 0 },
+    left{ 0 }
     {
     }
 
     /** Border with equal size around the 2D plane */
-    explicit constexpr BorderSize(unsigned int size)
-        : top{ size }, right{ size }, bottom{ size }, left{ size }
+    explicit constexpr BorderSize(unsigned int size) noexcept
+        : top{ size },
+    right{ size },
+    bottom{ size },
+    left{ size }
     {
     }
 
@@ -337,6 +340,28 @@ struct BorderSize
         return size;
     }
 
+    /** Check equality with another BorderSize struct
+     *
+     * @param[in] rhs other struct to check against
+     *
+     * @return true if they are equal
+     */
+    bool operator==(const BorderSize &rhs)
+    {
+        return (top == rhs.top) && (right == rhs.right) && (bottom == rhs.bottom) && (left == rhs.left);
+    }
+
+    /** Check non-equality with another BorderSize struct
+     *
+     * @param[in] rhs other struct to check against
+     *
+     * @return true if they are different
+     */
+    bool operator!=(const BorderSize &rhs)
+    {
+        return !(*this == rhs);
+    }
+
     /** Limit this border size.
      *
      * @param[in] limit Border size to limit this border size to.
@@ -358,7 +383,11 @@ struct BorderSize
 /** Container for 2D padding size */
 using PaddingSize = BorderSize;
 
-/** Policy to handle overflow */
+/** Policy to handle integer overflow
+ *  @note: This is ignored by floating point operations where the overflow behavior adheres to the IEEE-754 standard
+ *         which states that in case of overflow ±infinity is returned for the round-to-nearest modes (and follows the
+ *         rounding rules for the directed rounding modes) by default.
+ */
 enum class ConvertPolicy
 {
     WRAP,    /**< Wrap around */
@@ -379,53 +408,6 @@ enum class BilinearInterpolation
     BILINEAR_OLD_NEW, /**< Old-new method */
     BILINEAR_SCHARR   /**< Scharr method */
 };
-
-/** Threshold mode */
-enum class ThresholdType
-{
-    BINARY, /**< Threshold with one value */
-    RANGE   /**< Threshold with two values*/
-};
-
-/** Termination criteria */
-enum class Termination
-{
-    TERM_CRITERIA_EPSILON,    /**< Terminate when within epsilon of a threshold */
-    TERM_CRITERIA_ITERATIONS, /**< Terminate after a maximum number of iterations */
-    TERM_CRITERIA_BOTH        /**< Terminate on whichever of the other conditions occurs first */
-};
-
-/** Magnitude calculation type. */
-enum class MagnitudeType
-{
-    L1NORM, /**< L1 normalization type */
-    L2NORM  /**< L2 normalization type */
-};
-
-/** Phase calculation type.
- *
- * @note When PhaseType == SIGNED, each angle is mapped to the range 0 to 255 inclusive otherwise angles between 0 and 180
- */
-enum class PhaseType
-{
-    SIGNED,  /**< Angle range: [0, 360] */
-    UNSIGNED /**< Angle range: [0, 180] */
-};
-
-/** Keypoint type */
-struct KeyPoint
-{
-    int32_t x{ 0 };               /**< X coordinates */
-    int32_t y{ 0 };               /**< Y coordinates */
-    float   strength{ 0.f };      /**< Strength of the point */
-    float   scale{ 0.f };         /**< Scale initialized to 0 by the corner detector */
-    float   orientation{ 0.f };   /**< Orientation initialized to 0 by the corner detector */
-    int32_t tracking_status{ 0 }; /**< Status initialized to 1 by the corner detector, set to 0 when the point is lost */
-    float   error{ 0.f };         /**< Tracking error initialized to 0 by the corner detector */
-};
-
-/** Internal key point */
-using InternalKeypoint = std::tuple<float, float, float>; /* x,y,strength */
 
 /** Rectangle type */
 struct Rectangle
@@ -477,23 +459,6 @@ enum class Channel
     V        /**< Cr/V/Value channel. */
 };
 
-/** Available matrix patterns */
-enum class MatrixPattern
-{
-    BOX,   /**< Box pattern matrix. */
-    CROSS, /**< Cross pattern matrix. */
-    DISK,  /**< Disk pattern matrix. */
-    OTHER  /**< Any other matrix pattern. */
-};
-
-/** Available non linear functions. */
-enum class NonLinearFilterFunction : unsigned
-{
-    MEDIAN = 0, /**< Non linear median filter. */
-    MIN    = 1, /**< Non linear erode. */
-    MAX    = 2, /**< Non linear dilate. */
-};
-
 /** Available reduction operations */
 enum class ReductionOperation
 {
@@ -523,13 +488,23 @@ enum class ArithmeticOperation
 /** Available element wise unary operations */
 enum class ElementWiseUnary
 {
-    RSQRT, /**< Reverse square root */
-    EXP,   /**< Exponential */
-    NEG,   /**< Negate */
-    LOG,   /**< Natural Logarithm */
-    ABS,   /**< Absolute value */
-    SIN,   /**< Sine */
-    ROUND, /**< Round */
+    RSQRT,       /**< Reverse square root */
+    EXP,         /**< Exponential */
+    NEG,         /**< Negate */
+    LOG,         /**< Natural Logarithm */
+    ABS,         /**< Absolute value */
+    SIN,         /**< Sine */
+    ROUND,       /**< Round */
+    LOGICAL_NOT, /**< Logical Not */
+};
+
+/** Available bitwise operations */
+enum class BitwiseOperation
+{
+    AND, /**< Bitwise AND operation */
+    NOT, /**< Bitwise NOT operation */
+    OR,  /**< Bitwise OR operation  */
+    XOR, /**< Bitwise XOR operation  */
 };
 
 /** The normalization type used for the normalization layer */
@@ -538,14 +513,6 @@ enum class NormType
     IN_MAP_1D, /**< Normalization applied within the same map in 1D region */
     IN_MAP_2D, /**< Normalization applied within the same map in 2D region */
     CROSS_MAP  /**< Normalization applied cross maps */
-};
-
-/** Normalization type for Histogram of Oriented Gradients (HOG) */
-enum class HOGNormType
-{
-    L2_NORM    = 1, /**< L2-norm */
-    L2HYS_NORM = 2, /**< L2-norm followed by clipping */
-    L1_NORM    = 3  /**< L1 norm */
 };
 
 /** Detection window used for the object detection. The detection window keeps the following information:
@@ -713,8 +680,8 @@ public:
      * @param[in] stride_x   Stride, in elements, across x.
      * @param[in] stride_y   Stride, in elements, across y.
      * @param[in] pad_left   Padding across x on the left, in elements.
-     * @param[in] pad_top    Padding across y on the top, in elements.
      * @param[in] pad_right  Padding across x on the right, in elements.
+     * @param[in] pad_top    Padding across y on the top, in elements.
      * @param[in] pad_bottom Padding across y on the bottom, in elements.
      * @param[in] round      Dimensions rounding.
      */
@@ -800,6 +767,31 @@ private:
     unsigned int _pad_bottom;
 
     DimensionRoundingType _round_type;
+};
+
+/** Padding information for 3D operations like Conv3d */
+struct Padding3D
+{
+    Padding3D() noexcept
+    {
+    }
+
+    Padding3D(size_t pad_x, size_t pad_y, size_t pad_z)
+        : left(pad_x), right(pad_x), top(pad_y), bottom(pad_y), front(pad_z), back(pad_z)
+    {
+    }
+
+    Padding3D(size_t left, size_t right, size_t top, size_t bottom, size_t front, size_t back)
+        : left(left), right(right), top(top), bottom(bottom), front(front), back(back)
+    {
+    }
+
+    size_t left   = { 0 }; /**<  Padding across the width dimenstion on the left, in elements. */
+    size_t right  = { 0 }; /**<  Padding across the width dimenstion on the right, in elements. */
+    size_t top    = { 0 }; /**<  Padding across the height dimenstion  on the top, in elements. */
+    size_t bottom = { 0 }; /**<  Padding across the height dimenstion on the bottom, in elements. */
+    size_t front  = { 0 }; /**<  Padding across the depth dimenstion on the front, in elements. */
+    size_t back   = { 0 }; /**<  Padding across the depth dimenstion on the back, in elements. */
 };
 
 /** PriorBox layer info */
@@ -1579,12 +1571,16 @@ private:
 /** Fully connected layer info */
 struct FullyConnectedLayerInfo
 {
-    DataLayout          weights_trained_layout{ DataLayout::NCHW }; /**<  Layout that the weights have been trained with. */
-    bool                transpose_weights{ true };                  /**<  Transpose weights if true. */
-    bool                are_weights_reshaped{ false };              /**<  Reshape the weights tensor if false. */
-    bool                retain_internal_weights{ false };           /**<  Retain internal reshaped weights. */
-    bool                fp_mixed_precision{ false };                /**<  Use wider accumulators (32 bit instead of 16 for FP16) to improve accuracy. */
-    ActivationLayerInfo activation_info{};                          /**<  Fused activation to apply after the matrix multiplication. */
+    /* Fused-activation parameters */
+    ActivationLayerInfo activation_info{}; /**<  Fused activation to apply after the matrix multiplication. */
+    /* Information about weights */
+    DataLayout weights_trained_layout{ DataLayout::NCHW }; /**<  Layout that the weights have been trained with. */
+    bool       transpose_weights{ true };                  /**<  Transpose weights if true. */
+    bool       are_weights_reshaped{ false };              /**<  Reshape the weights tensor if false. */
+    bool       retain_internal_weights{ false };           /**<  Retain internal reshaped weights. */
+    bool       enable_fast_math{ false };                  /**<  Enable fast math computation. */
+    /* Other parameters */
+    bool fp_mixed_precision{ false }; /**<  Use wider accumulators (32 bit instead of 16 for FP16) to improve accuracy. */
 
     /** Sets the weights trained data layout
      *
@@ -1690,6 +1686,44 @@ private:
     bool     _is_scaled;
 };
 
+class StridedSliceLayerInfo
+{
+public:
+    /** Default Constructor
+     *
+     * @param[in] begin_mask       (Optional) If the ith bit of begin_mask is set, starts[i] is ignored and the fullest possible range in that dimension is used instead.
+     * @param[in] end_mask         (Optional) If the ith bit of end_mask is set, ends[i] is ignored and the fullest possible range in that dimension is used instead.
+     * @param[in] shrink_axis_mask (Optional) If the ith bit of shrink_axis_mask is set, it implies that the ith specification shrinks the dimensionality by 1.
+     */
+    StridedSliceLayerInfo(int32_t begin_mask = 0, int32_t end_mask = 0, int32_t shrink_axis_mask = 0)
+        : _begin_mask(begin_mask), _end_mask(end_mask), _shrink_axis_mask(shrink_axis_mask)
+    {
+    }
+
+    /* Get the begin mask value */
+    int32_t begin_mask() const
+    {
+        return _begin_mask;
+    }
+
+    /* Get the end mask value */
+    int32_t end_mask() const
+    {
+        return _end_mask;
+    }
+
+    /* Get the shrink axis mask value */
+    int32_t shrink_axis_mask() const
+    {
+        return _shrink_axis_mask;
+    }
+
+private:
+    int32_t _begin_mask;
+    int32_t _end_mask;
+    int32_t _shrink_axis_mask;
+};
+
 /** Convolution Layer Weights Information class. This class stores the necessary information to compute convolution layer when the weights are already reshaped */
 class WeightsInfo
 {
@@ -1741,20 +1775,20 @@ public:
     }
 
 private:
-    const bool         _are_reshaped;
-    const unsigned int _kernel_width;
-    const unsigned int _kernel_height;
-    const unsigned int _num_kernels;
-    const bool         _retain_internal_weights;
+    bool         _are_reshaped;
+    unsigned int _kernel_width;
+    unsigned int _kernel_height;
+    unsigned int _num_kernels;
+    bool         _retain_internal_weights;
 };
 
 /** GEMM reshape information class. This class stores the necessary information about matrix A and matrix B reshape.
  *
- * The matrix A can only be reshaped through @ref CLGEMMReshapeLHSMatrixKernel or  @ref NEGEMMInterleave4x4Kernel or  @ref GCGEMMInterleave4x4Kernel
- * Note: Optionally just for @ref CLGEMMReshapeLHSMatrixKernel is it possible to set mult_interleave4x4_height, the multiplication factor for the height of the 4x4 interleaved block
+ * The matrix A can only be reshaped through @ref opencl::kernels::ClGemmReshapeLhsMatrixKernel or  @ref cpu::kernels::CpuGemmInterleave4x4Kernel
+ * Note: Optionally just for @ref opencl::kernels::ClGemmReshapeLhsMatrixKernel is it possible to set mult_interleave4x4_height, the multiplication factor for the height of the 4x4 interleaved block
  *
- * The matrix B can only be reshaped through @ref CLGEMMReshapeRHSMatrixKernel or  @ref NEGEMMTranspose1xWKernel or  @ref GCGEMMTranspose1xWKernel
- * Note: Optionally just for @ref CLGEMMReshapeRHSMatrixKernel is it possible to set mult_transpose1xW_width, the multiplication factor for the width of the 1xW transposed block
+ * The matrix B can only be reshaped through @ref opencl::kernels::ClGemmReshapeRhsMatrixKernel or  @ref cpu::kernels::CpuGemmTranspose1xWKernel
+ * Note: Optionally just for @ref opencl::kernels::ClGemmReshapeRhsMatrixKernel is it possible to set mult_transpose1xW_width, the multiplication factor for the width of the 1xW transposed block
  *
  */
 class GEMMReshapeInfo final
@@ -1852,20 +1886,27 @@ public:
     };
 
 private:
-    const int  _m;
-    const int  _n;
-    const int  _k;
-    const int  _mult_transpose1xW_width;
-    const int  _mult_interleave4x4_height;
-    const int  _depth_output_gemm3d;
-    const bool _reinterpret_input_as_3d;
-    const bool _broadcast_bias;
+    int  _m;
+    int  _n;
+    int  _k;
+    int  _mult_transpose1xW_width;
+    int  _mult_interleave4x4_height;
+    int  _depth_output_gemm3d;
+    bool _reinterpret_input_as_3d;
+    bool _broadcast_bias;
 };
 
-struct DepthwiseConvolutionReshapeInfo
+struct ConvolutionInfo
 {
-    unsigned int c0{ 1 };            /**< Number of channels processed by the depth-wise convolution */
-    bool         transpose{ false }; /**< True if the block MxC0 (where M is the area of the filter i.e. KwxKh) has to be transposed */
+    ConvolutionInfo() = default;
+    ConvolutionInfo(const PadStrideInfo &pad_stride_info, unsigned int depth_multiplier, const ActivationLayerInfo &act_info, const Size2D &dilation)
+        : pad_stride_info(pad_stride_info), depth_multiplier(depth_multiplier), act_info(act_info), dilation(dilation)
+    {
+    }
+    PadStrideInfo       pad_stride_info{};        /**< Convolution info (Pads, strides,...) */
+    unsigned int        depth_multiplier{ 1 };    /**< Multiplier to apply to input's depth to retrieve the output depth. Defaults to 1 */
+    ActivationLayerInfo act_info{};               /**< Fused activation to apply after convolution. */
+    Size2D              dilation{ Size2D(1, 1) }; /**< Dilation, in elements, across x and y. Defaults to (1, 1). */
 };
 
 /** GEMMLowp output stage type */
@@ -1924,6 +1965,7 @@ struct GEMMRHSMatrixInfo
     bool         export_to_cl_image{ false }; /**< True if the reshaped rhs has to be exported to cl_image. n0 must be equal to 4 */
 };
 
+class ITensorInfo;
 /** GEMM information class. This class stores the necessary information to compute GEMM functions
  *
  * This object also contains the information about how matrix A and matrix B have been reshaped
@@ -1941,10 +1983,12 @@ public:
           _reinterpret_input_as_3d(false),
           _retain_internal_weights(false),
           _gemmlowp_output_stage(),
+          _fast_math(false),
           _fp_mixed_precision(false),
           _broadcast_bias(false),
-          _pretranpose_B(true),
-          _activation_info()
+          _pretranspose_B(true),
+          _activation_info(),
+          _post_ops()
     {
     }
     /** Constructor
@@ -1959,12 +2003,14 @@ public:
      * @param[in] retain_internal_weights     (Optional) Retain the weights tensor from previous run
      * @param[in] gemmlowp_output_stage       (Optional) GEMMLowp Output stage info
      * @param[in] fp_mixed_precision          (Optional) Use wider accumulators (32 bit instead of 16 for FP16) to improve accuracy.
+     * @param[in] fast_math                   (Optional) Use a data type of shorter width to improve performance
      * @param[in] broadcast_bias              (Optional) Broadcast the shape of the bias tensor from a vector to a matrix.
      * @param[in] activation_info             (Optional) Activation to apply after the matrix multiplication
+     * @param[in] post_ops                    (Optional) A sequence of post operations that are performed after the main operation.
      */
     GEMMInfo(bool is_a_reshaped, bool is_b_reshaped, bool reshape_b_only_on_first_run, int depth_output_gemm3d = 0, bool reinterpret_input_as_3d = false, bool retain_internal_weights = false,
-             GEMMLowpOutputStageInfo gemmlowp_output_stage = GEMMLowpOutputStageInfo(), bool fp_mixed_precision = false, bool broadcast_bias = false,
-             const ActivationLayerInfo &activation_info = ActivationLayerInfo()) noexcept
+             GEMMLowpOutputStageInfo gemmlowp_output_stage = GEMMLowpOutputStageInfo(), bool fp_mixed_precision = false, bool fast_math = false, bool broadcast_bias = false,
+             const ActivationLayerInfo &activation_info = ActivationLayerInfo(), const experimental::PostOpList<ITensorInfo *> &post_ops = experimental::PostOpList<ITensorInfo *>()) noexcept
         : _is_a_reshaped(is_a_reshaped),
           _is_b_reshaped(is_b_reshaped),
           _reshape_b_only_on_first_run(reshape_b_only_on_first_run),
@@ -1972,10 +2018,12 @@ public:
           _reinterpret_input_as_3d(reinterpret_input_as_3d),
           _retain_internal_weights(retain_internal_weights),
           _gemmlowp_output_stage(gemmlowp_output_stage),
+          _fast_math(fast_math),
           _fp_mixed_precision(fp_mixed_precision),
           _broadcast_bias(broadcast_bias),
-          _pretranpose_B(reshape_b_only_on_first_run),
-          _activation_info(activation_info)
+          _pretranspose_B(reshape_b_only_on_first_run),
+          _activation_info(activation_info),
+          _post_ops(post_ops)
     {
     }
     /** Flag which specifies if the matrix A has been reshaped
@@ -2052,6 +2100,22 @@ public:
     {
         return _fp_mixed_precision;
     };
+    /** Flag which specifies if a shorter accumulator to be used.
+     *
+     * @return True if a shorter accumulator has to be used
+     */
+    bool fast_math() const
+    {
+        return _fast_math;
+    };
+    /** Set fast math flag
+     *
+     * @param[in] fast_math Flag to set
+     */
+    void set_fast_math(bool fast_math)
+    {
+        _fast_math = fast_math;
+    }
     /** Flag which specifies whether to broadcast the shape of the bias tensor.
      *
      * @return True if the shape of the bias tensor is to be broadcasted.
@@ -2064,17 +2128,17 @@ public:
      *
      * @return True if b should be pre-transposed else false.
      */
-    bool pretranpose_B() const
+    bool pretranspose_B() const
     {
-        return _pretranpose_B;
+        return _pretranspose_B;
     };
     /** Set pre-transpose b flag
      *
      * @param[in] flag Flag to set
      */
-    void set_pretranpose_B(bool flag)
+    void set_pretranspose_B(bool flag)
     {
-        _pretranpose_B = flag;
+        _pretranspose_B = flag;
     }
     /** Activation layer to apply after the matrix multiplication
      *
@@ -2092,19 +2156,37 @@ public:
     {
         _activation_info = activation_info;
     }
+    /** Post operations to apply after the matrix multiplication
+     *
+     * @return experimental::PostOpList object
+     */
+    const experimental::PostOpList<ITensorInfo *> &post_ops() const
+    {
+        return _post_ops;
+    }
+    /** Set post ops
+     *
+     * @param[in] post_ops experimental::PostOpList object to set
+     */
+    void set_post_ops(const experimental::PostOpList<ITensorInfo *> &post_ops)
+    {
+        _post_ops = post_ops;
+    }
 
 private:
-    bool                    _is_a_reshaped;
-    bool                    _is_b_reshaped;
-    bool                    _reshape_b_only_on_first_run;
-    int                     _depth_output_gemm3d;
-    bool                    _reinterpret_input_as_3d;
-    bool                    _retain_internal_weights;
-    GEMMLowpOutputStageInfo _gemmlowp_output_stage;
-    bool                    _fp_mixed_precision;
-    bool                    _broadcast_bias;
-    bool                    _pretranpose_B;
-    ActivationLayerInfo     _activation_info;
+    bool                                    _is_a_reshaped;
+    bool                                    _is_b_reshaped;
+    bool                                    _reshape_b_only_on_first_run;
+    int                                     _depth_output_gemm3d;
+    bool                                    _reinterpret_input_as_3d;
+    bool                                    _retain_internal_weights;
+    GEMMLowpOutputStageInfo                 _gemmlowp_output_stage;
+    bool                                    _fast_math;
+    bool                                    _fp_mixed_precision;
+    bool                                    _broadcast_bias;
+    bool                                    _pretranspose_B;
+    ActivationLayerInfo                     _activation_info;
+    experimental::PostOpList<ITensorInfo *> _post_ops;
 };
 
 /** Winograd information */

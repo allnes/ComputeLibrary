@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -37,7 +37,7 @@ class ITensor;
 /** Function to calculate the index of the minimum or maximum values in a
  *  tensor based on an axis.
  *
- *  This function calls the following NEON kernels:
+ *  This function calls the following kernels:
  *
  * -# @ref NEReductionOperationKernel
  * -# @ref NEFillBorderKernel
@@ -52,7 +52,29 @@ class NEArgMinMaxLayer : public IFunction
 public:
     /** Constructor */
     NEArgMinMaxLayer(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEArgMinMaxLayer(const NEArgMinMaxLayer &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEArgMinMaxLayer &operator=(const NEArgMinMaxLayer &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEArgMinMaxLayer(NEArgMinMaxLayer &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEArgMinMaxLayer &operator=(NEArgMinMaxLayer &&) = delete;
+    /** Default destructor */
+    ~NEArgMinMaxLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst        |
+     * |:--------------|:----------|
+     * |QASYMM8        |U32, S32   |
+     * |QASYMM8_SIGNED |U32, S32   |
+     * |S32            |U32, S32   |
+     * |F16            |U32, S32   |
+     * |F32            |U32, S32   |
      *
      * @param[in]  input  Input source tensor. Data types supported: QASYMM8_SIGNED/QASYMM8/S32/F16/F32.
      * @param[in]  axis   Axis to find max/min index.

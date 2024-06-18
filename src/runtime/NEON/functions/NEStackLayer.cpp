@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -30,9 +30,13 @@
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
 #include "arm_compute/runtime/NEON/NEScheduler.h"
+#include "src/common/utils/Log.h"
+#include "src/core/NEON/kernels/NEStackLayerKernel.h"
 
 namespace arm_compute
 {
+NEStackLayer::~NEStackLayer() = default;
+
 NEStackLayer::NEStackLayer() // NOLINT
     : _input(),
       _stack_kernels(),
@@ -42,6 +46,8 @@ NEStackLayer::NEStackLayer() // NOLINT
 
 void NEStackLayer::configure(const std::vector<ITensor *> &input, int axis, ITensor *output)
 {
+    ARM_COMPUTE_LOG_PARAMS(input, axis, output);
+
     _num_inputs = input.size();
     _stack_kernels.resize(_num_inputs);
 
@@ -50,7 +56,8 @@ void NEStackLayer::configure(const std::vector<ITensor *> &input, int axis, ITen
 
     for(unsigned int i = 0; i < _num_inputs; i++)
     {
-        _stack_kernels[i].configure(input[i], axis_u, i, _num_inputs, output);
+        _stack_kernels[i] = std::make_unique<NEStackLayerKernel>();
+        _stack_kernels[i]->configure(input[i], axis_u, i, _num_inputs, output);
     }
 }
 
@@ -80,7 +87,7 @@ void NEStackLayer::run()
 {
     for(unsigned i = 0; i < _num_inputs; i++)
     {
-        NEScheduler::get().schedule(&_stack_kernels[i], Window::DimY);
+        NEScheduler::get().schedule(_stack_kernels[i].get(), Window::DimY);
     }
 }
 } // namespace arm_compute

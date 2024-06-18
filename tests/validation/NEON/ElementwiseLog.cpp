@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -32,7 +32,7 @@
 #include "tests/framework/Macros.h"
 #include "tests/framework/datasets/Datasets.h"
 #include "tests/validation/Validation.h"
-#include "tests/validation/fixtures/ElementWiseUnaryFixture.h"
+#include "tests/validation/fixtures/ElementwiseUnaryFixture.h"
 
 namespace arm_compute
 {
@@ -49,25 +49,6 @@ RelativeTolerance<float> tolerance_fp16(0.01f);
 } // namespace
 TEST_SUITE(NEON)
 TEST_SUITE(LogLayer)
-
-DATA_TEST_CASE(Configuration, framework::DatasetMode::ALL, combine(datasets::SmallShapes(), framework::dataset::make("DataType", DataType::F32)), shape, data_type)
-{
-    // Create tensors
-    Tensor src = create_tensor<Tensor>(shape, data_type);
-    Tensor dst = create_tensor<Tensor>(shape, data_type);
-
-    ARM_COMPUTE_EXPECT(src.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(dst.info()->is_resizable(), framework::LogLevel::ERRORS);
-
-    // Create and configure function
-    NELogLayer log_layer;
-    log_layer.configure(&src, &dst);
-
-    // Validate valid region
-    const ValidRegion valid_region = shape_to_valid_region(shape);
-    validate(src.info()->valid_region(), valid_region);
-    validate(dst.info()->valid_region(), valid_region);
-}
 
 template <typename T>
 using NELogLayerFixture = LogValidationFixture<Tensor, Accessor, NELogLayer, T>;
@@ -108,7 +89,7 @@ FIXTURE_DATA_TEST_CASE(RunLarge, NELogLayerFixture<float>, framework::DatasetMod
 TEST_SUITE_END() // FP32
 TEST_SUITE_END() // Float
 TEST_SUITE_END() // LogLayer
-TEST_SUITE_END() // NEON
+TEST_SUITE_END() // Neon
 } // namespace validation
 } // namespace test
 } // namespace arm_compute

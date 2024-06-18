@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,15 +26,14 @@
 #endif /* ARM_COMPUTE_CL */
 
 #include "CommonGemmExampleOptions.h"
-#include "arm_compute/core/CL/gemm/CLGEMMHelpers.h"
-#include "arm_compute/core/CL/kernels/CLGEMMMatrixMultiplyReshapedOnlyRHSKernel.h"
+#include "GemmTunerHelpers.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/KernelDescriptors.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
-#include "arm_compute/runtime/CL/CLFunctions.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
 #include "arm_compute/runtime/CL/CLTuner.h"
+#include "src/gpu/cl/kernels/ClGemmMatrixMultiplyReshapedOnlyRhsKernel.h"
 #include "tests/CL/Helper.h"
 #include "utils/Utils.h"
 #include "utils/command_line/CommandLineOptions.h"
@@ -43,6 +42,7 @@
 #include <cstdlib>
 
 using namespace arm_compute;
+using namespace arm_compute::opencl::kernels;
 using namespace utils;
 using namespace arm_compute::misc::shape_calculator;
 using namespace gemm_tuner;
@@ -148,8 +148,8 @@ GemmConfigs consume_gemm_configs(const GemmConfigOptions &options)
 }
 
 } // namespace
-// Create function for CLGEMMMatrixMultiplyReshapedOnlyRHSKernel
-using CLGEMMMatrixMultiplyReshapedOnlyRHS = test::CLSynthetizeFunction<CLGEMMMatrixMultiplyReshapedOnlyRHSKernel>;
+// Create function for ClGemmMatrixMultiplyReshapedOnlyRhsKernel
+using CLGEMMMatrixMultiplyReshapedOnlyRHS = test::CLSynthetizeOperator<ClGemmMatrixMultiplyReshapedOnlyRhsKernel>;
 
 class CLGEMMMatrixMultiplyReshapedOnlyRHSExample : public Example
 {
@@ -196,6 +196,8 @@ public:
         std::cout << "Gemm configurations:" << std::endl;
         std::cout << configs << std::endl;
 
+        tuner.set_tuner_mode(params.tuner_mode);
+
         CLScheduler::get().default_init(&tuner);
 
         lhs.allocator()->init(TensorInfo(TensorShape(params.K, params.M, params.B), 1, params.data_type));
@@ -224,16 +226,20 @@ public:
         kernel_info.activation_info         = act_info;
 
         // Initialise rhs_reshaped tensor info
-        auto_init_if_empty(*rhs_reshaped.info(), rhs.info()->clone()->set_tensor_shape(compute_rhs_reshaped_shape(*rhs.info(), rhs_info)));
+        rhs_reshaped.allocator()->init(TensorInfo(compute_rhs_reshaped_shape(*rhs.info(), rhs_info), 1, params.data_type));
 
         if(rhs_info.export_to_cl_image)
         {
-            arm_compute::cl_gemm::update_padding_for_cl_image(rhs_reshaped.info());
+            if(!examples::gemm_tuner_helpers::update_padding_for_cl_image(rhs_reshaped.info()))
+            {
+                std::cerr << "cl_image is not supported on the device, disable export_to_cl_image" << std::endl;
+                return false;
+            }
         }
 
         // Validate argments
         Status status{};
-        status = gemm.validate((&lhs)->info(), (&rhs_reshaped)->info(), (&bias)->info(), (&dst)->info(), alpha, beta, lhs_info, rhs_info, kernel_info);
+        status = gemm.validate(lhs.info(), rhs_reshaped.info(), bias.info(), dst.info(), alpha, beta, lhs_info, rhs_info, kernel_info);
         if(!status)
         {
             // Unsupported arguments
@@ -243,7 +249,7 @@ public:
         }
 
         // Configure function
-        gemm.configure(&lhs, &rhs_reshaped, &bias, &dst, alpha, beta, lhs_info, rhs_info, kernel_info);
+        gemm.configure(lhs.info(), rhs_reshaped.info(), bias.info(), dst.info(), alpha, beta, lhs_info, rhs_info, kernel_info);
 
         // Allocate tensors
         lhs.allocator()->allocate();
@@ -257,7 +263,12 @@ public:
     void do_run() override
     {
         // Execute the function
-        gemm.run();
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs },
+            { ACL_SRC_1, &rhs_reshaped },
+            { ACL_SRC_2, &bias },
+            { ACL_DST, &dst }
+        });
+        gemm.run(gemm_pack);
 
         // Make sure all the OpenCL jobs are done executing:
         CLScheduler::get().sync();
@@ -280,7 +291,7 @@ private:
 /** Main program for gemm reshaped rhs only test
  *
  * @param[in] argc Number of arguments
- * @param[in] argv Arguments ( [optional] M, [optional] N, [optional] K, [optional] B, [optional] m0, [optional] n0, [optional] k0, [optional] h0, [optional] interleave_rhs, [optional] transpose_rhs )
+ * @param[in] argv Arguments ( [optional] M, [optional] N, [optional] K, [optional] B, [optional] m0, [optional] n0, [optional] k0, [optional] h0, [optional] interleave_rhs, [optional] transpose_rhs, [optional] export_to_cl_image)
  */
 int main(int argc, char **argv)
 {

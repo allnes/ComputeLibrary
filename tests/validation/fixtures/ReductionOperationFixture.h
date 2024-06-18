@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -61,12 +61,17 @@ protected:
     template <typename U>
     void fill(U &&tensor)
     {
-        if(!is_data_type_quantized(tensor.data_type()))
+        if(tensor.data_type() == DataType::F32)
         {
-            std::uniform_real_distribution<> distribution(-1.0f, 1.0f);
+            std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
             library->fill(tensor, distribution, 0);
         }
-        else
+        else if(tensor.data_type() == DataType::F16)
+        {
+            arm_compute::utils::uniform_real_distribution_16bit<half> distribution{ -1.0f, 1.0f };
+            library->fill(tensor, distribution, 0);
+        }
+        else if(is_data_type_quantized(tensor.data_type()))
         {
             if(tensor.data_type() == DataType::QASYMM8)
             {
@@ -87,6 +92,10 @@ protected:
                 ARM_COMPUTE_ERROR("Not supported");
             }
         }
+        else
+        {
+            library->fill_tensor_uniform(tensor, 0);
+        }
     }
 
     TensorType compute_target(const TensorShape &src_shape, DataType data_type, unsigned int axis, ReductionOperation op, QuantizationInfo quantization_info)
@@ -99,15 +108,15 @@ protected:
         FunctionType reduction_func;
         reduction_func.configure(&src, &dst, axis, op, _keep_dims);
 
-        ARM_COMPUTE_EXPECT(src.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(src.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(dst.info()->is_resizable());
 
         // Allocate tensors
         src.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!src.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!src.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(src));
@@ -126,7 +135,7 @@ protected:
         // Fill reference
         fill(src);
 
-        return reference::reduction_operation<T, T>(src, dst_shape, axis, op);
+        return reference::reduction_operation<T, T>(src, dst_shape, axis, op, quantization_info);
     }
 
     TensorType      _target{};

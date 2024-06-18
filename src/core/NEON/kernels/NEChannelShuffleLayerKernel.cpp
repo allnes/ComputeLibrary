@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,9 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/NEON/kernels/NEChannelShuffleLayerKernel.h"
+#include "src/core/NEON/kernels/NEChannelShuffleLayerKernel.h"
 
-#include "arm_compute/core/CPP/Validate.h"
 #include "arm_compute/core/Error.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/ITensor.h"
@@ -31,6 +30,9 @@
 #include "arm_compute/core/Utils.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/core/Window.h"
+#include "src/core/CPP/Validate.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/helpers/WindowHelpers.h"
 
 namespace arm_compute
 {
@@ -38,7 +40,7 @@ namespace
 {
 Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, unsigned int num_groups)
 {
-    // Note: ARM_COMPUTE_RETURN_ERROR_ON_CPU_F16_UNSUPPORTED(input) is not needed here as this kernel doesn't use NEON FP16 instructions.
+    // Note: ARM_COMPUTE_RETURN_ERROR_ON_CPU_F16_UNSUPPORTED(input) is not needed here as this kernel doesn't use CPU FP16 instructions.
     ARM_COMPUTE_RETURN_ERROR_ON(input->data_type() == DataType::UNKNOWN);
     ARM_COMPUTE_RETURN_ERROR_ON_DATA_LAYOUT_NOT_IN(input, DataLayout::NCHW, DataLayout::NHWC);
 
@@ -66,7 +68,7 @@ void channel_shuffle_nhwc(const ITensor *input, ITensor *output, unsigned int nu
 
     const size_t       element_size = input->info()->element_size();
     const unsigned int K            = input->info()->dimension(channel_idx) / num_groups;
-    const float        rK           = 1.f / K;
+    const double       rK           = 1.0 / K;
 
     Iterator in(input, window);
 
@@ -101,7 +103,7 @@ void channel_shuffle_nchw(const ITensor *input, ITensor *output, unsigned int nu
     const size_t       row_size        = input->info()->dimension(width_idx) * input->info()->element_size();
 
     const unsigned int K  = input->info()->dimension(channel_idx) / num_groups;
-    const float        rK = 1.f / K;
+    const double       rK = 1.0 / K;
 
     Iterator in(input, win);
 
@@ -153,10 +155,6 @@ void NEChannelShuffleLayerKernel::configure(const ITensor *input, ITensor *outpu
     Window win = calculate_max_window(*input->info(), Steps());
 
     // The NEChannelShuffleLayerKernel doesn't need padding so update_window_and_padding() can be skipped
-    Coordinates coord;
-    coord.set_num_dimensions(output->info()->num_dimensions());
-    output->info()->set_valid_region(ValidRegion(coord, output->info()->tensor_shape()));
-
     INEKernel::configure(win);
 }
 

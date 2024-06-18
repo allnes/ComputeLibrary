@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,18 +21,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/NEON/kernels/NEL2NormalizeLayerKernel.h"
+#include "src/core/NEON/kernels/NEL2NormalizeLayerKernel.h"
 
 #include "arm_compute/core/Error.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/ITensor.h"
-#include "arm_compute/core/NEON/NEMath.h"
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Utils.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/core/Window.h"
+#include "src/core/NEON/NEMath.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/helpers/WindowHelpers.h"
 
-#include "arm_compute/core/NEON/wrapper/wrapper.h"
+#include "src/core/NEON/wrapper/wrapper.h"
 #include <arm_neon.h>
 #include <cmath>
 
@@ -163,9 +165,6 @@ std::tuple<Status, Window> validate_and_configure_window(ITensorInfo *input, ITe
     auto_init_if_empty(*output, input->tensor_shape(), 1, input->data_type());
 
     // NEL2NormalizeLayerKernel doesn't need padding so update_window_and_padding() can be skipped
-    Coordinates coord;
-    coord.set_num_dimensions(output->num_dimensions());
-    output->set_valid_region(ValidRegion(coord, output->tensor_shape()));
 
     return std::make_tuple(Status{}, win);
 }

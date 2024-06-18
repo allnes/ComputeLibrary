@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,7 +25,6 @@
 #define ARM_COMPUTE_NEFUSEBATCHNORMALIZATION_H
 
 #include "arm_compute/core/ITensor.h"
-#include "arm_compute/core/NEON/kernels/NEFuseBatchNormalizationKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
 
@@ -33,6 +32,7 @@ namespace arm_compute
 {
 // Forward declarations
 class ITensor;
+class NEFuseBatchNormalizationKernel;
 
 /** Basic function to fuse the batch normalization node to a preceding convolution node */
 class NEFuseBatchNormalization : public IFunction
@@ -49,8 +49,18 @@ public:
     /** Allow instances of this class to be moved */
     NEFuseBatchNormalization &operator=(NEFuseBatchNormalization &&) = default;
     /** Default destructor */
-    ~NEFuseBatchNormalization() = default;
+    ~NEFuseBatchNormalization();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |F32            |F32            |
+     * |F16            |F16            |
      *
      * @param[in]  input_weights Input weights tensor for convolution or depthwise convolution layer. Data type supported: F16/F32. Data layout supported: NCHW, NHWC
      * @param[in]  bn_mean       Batch normalization layer mean tensor. Same as @p input_weights
@@ -94,7 +104,7 @@ public:
     void run() override;
 
 private:
-    NEFuseBatchNormalizationKernel _fuse_bn_kernel;
+    std::unique_ptr<NEFuseBatchNormalizationKernel> _fuse_bn_kernel;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_NEFUSEBATCHNORMALIZATION_H */

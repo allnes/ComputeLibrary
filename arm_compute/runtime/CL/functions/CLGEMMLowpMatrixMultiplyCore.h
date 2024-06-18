@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,21 +24,18 @@
 #ifndef ARM_COMPUTE_CLGEMMLOWPMATRIXMULTIPLYCORE_H
 #define ARM_COMPUTE_CLGEMMLOWPMATRIXMULTIPLYCORE_H
 
-#include "arm_compute/core/CL/kernels/CLDepthConvertLayerKernel.h"
-#include "arm_compute/core/CL/kernels/CLGEMMLowpMatrixMultiplyNativeKernel.h"
-#include "arm_compute/core/CL/kernels/CLGEMMLowpMatrixMultiplyReshapedOnlyRHSKernel.h"
-#include "arm_compute/core/CL/kernels/CLGEMMLowpOffsetContributionKernel.h"
-#include "arm_compute/core/CL/kernels/CLGEMMLowpOffsetContributionOutputStageKernel.h"
-#include "arm_compute/core/CL/kernels/CLGEMMLowpReductionKernel.h"
-#include "arm_compute/core/CL/kernels/CLGEMMReshapeRHSMatrixKernel.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/MemoryGroup.h"
 
+#include <memory>
+
 namespace arm_compute
 {
+class CLCompileContext;
 class IMemoryManager;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to execute GEMMLowpMatrixMultiplyCore on OpenCL. */
 class CLGEMMLowpMatrixMultiplyCore : public IFunction
@@ -54,7 +51,29 @@ public:
     CLGEMMLowpMatrixMultiplyCore &operator=(const CLGEMMLowpMatrixMultiplyCore &) = delete;
     /** Default move assignment operator */
     CLGEMMLowpMatrixMultiplyCore &operator=(CLGEMMLowpMatrixMultiplyCore &&) = default;
+    /** Default destructor */
+    ~CLGEMMLowpMatrixMultiplyCore();
     /** Initialise the kernel's inputs, output
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0           |src1               |src2     |dst            |
+     * |:--------------|:------------------|:--------|:--------------|
+     * |QASYMM8        |QASYMM8            |S32      |QASYMM8        |
+     * |QASYMM8        |QSYMM8_PER_CHANNEL |S32      |QASYMM8        |
+     * |QASYMM8        |QSYMM8             |S32      |QASYMM8        |
+     * |QASYMM8        |QASYMM8            |S32      |S32            |
+     * |QASYMM8        |QSYMM8_PER_CHANNEL |S32      |S32            |
+     * |QASYMM8        |QSYMM8             |S32      |S32            |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED     |S32      |QASYMM8_SIGNED |
+     * |QASYMM8_SIGNED |QSYMM8_PER_CHANNEL |S32      |QASYMM8_SIGNED |
+     * |QASYMM8_SIGNED |QSYMM8             |S32      |QASYMM8_SIGNED |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED     |S32      |S32            |
+     * |QASYMM8_SIGNED |QSYMM8_PER_CHANNEL |S32      |S32            |
+     * |QASYMM8_SIGNED |QSYMM8             |S32      |S32            |
      *
      * @note GEMMLowp:  low precision GEMM kernel. [A * B + C]
      *  This kernel performs the following computations:
@@ -109,40 +128,8 @@ public:
     void prepare() override;
 
 private:
-    MemoryGroup _memory_group;
-
-    // Kernels used
-    CLDepthConvertLayerKernel                     _weights_to_qasymm8;
-    CLGEMMLowpMatrixMultiplyNativeKernel          _mm_native_kernel;
-    CLGEMMLowpMatrixMultiplyReshapedOnlyRHSKernel _mm_reshaped_only_rhs_kernel;
-    CLGEMMReshapeRHSMatrixKernel                  _mtx_b_reshape_kernel;
-    CLGEMMLowpMatrixAReductionKernel              _mtx_a_reduction_kernel;
-    CLGEMMLowpMatrixBReductionKernel              _mtx_b_reduction_kernel;
-    CLGEMMLowpOffsetContributionKernel            _offset_contribution_kernel;
-    CLGEMMLowpOffsetContributionOutputStageKernel _offset_contribution_output_stage_kernel;
-
-    // Temporary tensors
-    CLTensor _qasymm8_weights;
-    CLTensor _vector_sum_col;
-    CLTensor _vector_sum_row;
-    CLTensor _tmp_b;
-    CLTensor _mm_result_s32;
-    CLTensor _gemm_output_stage_multipliers;
-    CLTensor _gemm_output_stage_shifts;
-
-    // Tensor pointers
-    const ICLTensor *_matrix_a;
-    const ICLTensor *_original_b;
-    const ICLTensor *_output;
-
-    int32_t _a_offset;
-    int32_t _b_offset;
-    bool    _is_gemm_reshaped;
-    bool    _reshape_b_only_on_first_run;
-    bool    _is_prepared;
-    bool    _run_output_stage;
-    bool    _convert_to_qasymm8;
-    bool    _run_offset_contribution;
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_CLGEMMLOWPMATRIXMULTIPLYCORE_H */

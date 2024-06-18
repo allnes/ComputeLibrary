@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -28,8 +28,11 @@
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
 #include "arm_compute/core/utils/quantization/AsymmHelpers.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
+#include "src/core/CL/kernels/CLDeconvolutionReshapeOutputKernel.h"
+#include "src/core/CL/kernels/CLFillBorderKernel.h"
 
-#include <memory>
+#include "src/common/utils/Log.h"
+
 #include <tuple>
 
 namespace arm_compute
@@ -99,7 +102,7 @@ CLGEMMDeconvolutionLayer::CLGEMMDeconvolutionLayer(std::shared_ptr<IMemoryManage
       _permute_weights_to_nhwc(),
       _reshape_weights(),
       _transpose_weights(),
-      _deconv_reshape(),
+      _deconv_reshape(std::make_unique<CLDeconvolutionReshapeOutputKernel>()),
       _slice_gemm(),
       _gemmlowp_final(),
       _reshaped_weights(),
@@ -115,6 +118,8 @@ CLGEMMDeconvolutionLayer::CLGEMMDeconvolutionLayer(std::shared_ptr<IMemoryManage
       _is_quantized(false)
 {
 }
+
+CLGEMMDeconvolutionLayer::~CLGEMMDeconvolutionLayer() = default;
 
 Status CLGEMMDeconvolutionLayer::validate(const ITensorInfo *input, const ITensorInfo *weights, const ITensorInfo *bias, const ITensorInfo *output, const PadStrideInfo &deconv_info)
 {
@@ -225,6 +230,7 @@ void CLGEMMDeconvolutionLayer::configure(const CLCompileContext &compile_context
                                                                   bias != nullptr ? bias->info() : nullptr,
                                                                   output->info(),
                                                                   deconv_info));
+    ARM_COMPUTE_LOG_PARAMS(input, weights, bias, output, deconv_info);
 
     _original_weights = weights;
     _padded_input     = deconv_info.pad_bottom() > 0 || deconv_info.pad_left() > 0 || deconv_info.pad_right() > 0 || deconv_info.pad_top() > 0;
@@ -317,7 +323,7 @@ void CLGEMMDeconvolutionLayer::configure(const CLCompileContext &compile_context
     }
 
     // Configure a Col2Im call to reshape the output of GEMM
-    _deconv_reshape.configure(compile_context, &_gemm_output, bias, deconv_reshape_output, input->info(), weights->info(), deconv_info);
+    _deconv_reshape->configure(compile_context, &_gemm_output, bias, deconv_reshape_output, input->info(), weights->info(), deconv_info);
     _gemm_output.allocator()->allocate();
 
     if(_is_quantized)
@@ -357,7 +363,7 @@ void CLGEMMDeconvolutionLayer::run()
         _mm_gemm.run();
     }
 
-    CLScheduler::get().enqueue(_deconv_reshape, false);
+    CLScheduler::get().enqueue(*_deconv_reshape, false);
 
     if(_is_quantized)
     {

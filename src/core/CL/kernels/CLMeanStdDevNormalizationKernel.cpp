@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,18 +21,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/CL/kernels/CLMeanStdDevNormalizationKernel.h"
+#include "src/core/CL/kernels/CLMeanStdDevNormalizationKernel.h"
 
 #include "arm_compute/core/CL/CLHelpers.h"
 #include "arm_compute/core/CL/CLKernelLibrary.h"
-#include "arm_compute/core/CL/CLValidate.h"
 #include "arm_compute/core/CL/ICLTensor.h"
 #include "arm_compute/core/CL/OpenCL.h"
-#include "arm_compute/core/Error.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/TensorInfo.h"
-#include "arm_compute/core/Types.h"
-#include "arm_compute/core/Window.h"
+#include "src/core/CL/CLValidate.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/helpers/WindowHelpers.h"
 #include "support/StringSupport.h"
 
 namespace arm_compute
@@ -55,32 +54,12 @@ Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, f
     }
     return Status{};
 }
-
-std::pair<Status, Window> validate_and_configure_window(ITensorInfo *input, ITensorInfo *output)
-{
-    if(output != nullptr)
-    {
-        ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
-        // Output auto inizialitation if not yet initialized
-        auto_init_if_empty(*output, *input);
-    }
-
-    const unsigned int num_elems_processed_per_iteration = 16 / input->element_size();
-
-    // This kernel doesn't need padding
-    Window win = calculate_max_window(*input, Steps(num_elems_processed_per_iteration));
-    if(output != nullptr)
-    {
-        output->set_valid_region(ValidRegion(Coordinates(), output->tensor_shape()));
-    }
-
-    return std::make_pair(Status{}, win);
-}
 } // namespace
 
 CLMeanStdDevNormalizationKernel::CLMeanStdDevNormalizationKernel()
     : _input(nullptr), _output(nullptr), _run_in_place(false)
 {
+    _type = CLKernelType::ELEMENTWISE;
 }
 
 void CLMeanStdDevNormalizationKernel::configure(ICLTensor *input, ICLTensor *output, float epsilon)
@@ -96,10 +75,15 @@ void CLMeanStdDevNormalizationKernel::configure(const CLCompileContext &compile_
 
     ARM_COMPUTE_ERROR_THROW_ON(CLMeanStdDevNormalizationKernel::validate(input->info(), (output != nullptr) ? output->info() : nullptr, epsilon));
 
+    if(output != nullptr)
+    {
+        auto_init_if_empty(*output->info(), *input->info());
+    }
+
     _input  = input;
     _output = output;
 
-    const unsigned int num_elems_processed_per_iteration = 16 / input->info()->element_size();
+    const unsigned int num_elems_processed_per_iteration = adjust_vec_size(16 / input->info()->element_size(), input->info()->dimension(0));
 
     // Set build options
     CLBuildOptions build_opts;
@@ -113,9 +97,8 @@ void CLMeanStdDevNormalizationKernel::configure(const CLCompileContext &compile_
     _kernel = create_kernel(compile_context, "mean_stddev_normalization", build_opts.options());
 
     // Configure kernel window
-    auto win_config = validate_and_configure_window(input->info(), (_run_in_place) ? nullptr : output->info());
-    ARM_COMPUTE_ERROR_THROW_ON(win_config.first);
-    ICLKernel::configure_internal(win_config.second);
+    Window win = calculate_max_window(*input->info(), Steps(num_elems_processed_per_iteration));
+    ICLKernel::configure_internal(win);
 
     // Set config_id for enabling LWS tuning
     _config_id = "mean_stddev_normalization_layer_";
@@ -129,7 +112,6 @@ void CLMeanStdDevNormalizationKernel::configure(const CLCompileContext &compile_
 Status CLMeanStdDevNormalizationKernel::validate(const ITensorInfo *input, const ITensorInfo *output, float epsilon)
 {
     ARM_COMPUTE_RETURN_ON_ERROR(validate_arguments(input, output, epsilon));
-    ARM_COMPUTE_RETURN_ON_ERROR(validate_and_configure_window(input->clone().get(), (output != nullptr) ? output->clone().get() : nullptr).first);
     return Status{};
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,21 +24,23 @@
 #ifndef ARM_COMPUTE_CLDECONVOLUTIONLAYERUPSAMPLE_H
 #define ARM_COMPUTE_CLDECONVOLUTIONLAYERUPSAMPLE_H
 
+#include "arm_compute/core/Types.h"
+#include "arm_compute/runtime/CL/functions/CLFill.h"
 #include "arm_compute/runtime/IFunction.h"
 
-#include "arm_compute/core/CL/kernels/CLDeconvolutionLayerUpsampleKernel.h"
-#include "arm_compute/core/CL/kernels/CLMemsetKernel.h"
-#include "arm_compute/core/Types.h"
-#include "arm_compute/runtime/IFunction.h"
+#include <memory>
 
 namespace arm_compute
 {
 // Forward declarations
+class CLDeconvolutionLayerUpsampleKernel;
+class CLCompileContext;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to execute deconvolution upsample on OpenCL. This function calls the following OpenCL kernels and functions:
  *
- * -# @ref CLMemsetKernel
+ * -# @ref CLFill
  * -# @ref CLDeconvolutionLayerUpsampleKernel
  */
 class CLDeconvolutionLayerUpsample : public IFunction
@@ -55,9 +57,18 @@ public:
     /** Allow instances of this class to be moved */
     CLDeconvolutionLayerUpsample &operator=(CLDeconvolutionLayerUpsample &&) = default;
     /** Default destructor */
-    virtual ~CLDeconvolutionLayerUpsample() = default;
+    ~CLDeconvolutionLayerUpsample();
 
     /** Initialize the function's source, destination, interpolation type and border_mode.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |All            |All            |
      *
      * @param[in, out] input  Source tensor. Data type supported: All.
      * @param[out]     output Destination tensor. Data type supported: same as @p input.
@@ -86,9 +97,9 @@ public:
     void run() override;
 
 private:
-    CLDeconvolutionLayerUpsampleKernel _upsample;
-    CLMemsetKernel                     _memset;
-    ICLTensor                         *_output;
+    std::unique_ptr<CLDeconvolutionLayerUpsampleKernel> _upsample;
+    CLFill                                              _fill;
+    ICLTensor                                          *_output;
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_CLDECONVOLUTIONLAYERUPSAMPLE_H */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -46,9 +46,28 @@ class CLFFT2D : public IFunction
 public:
     /** Default Constructor */
     CLFFT2D(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
+    /** Prevent instances of this class from being copied */
+    CLFFT2D(const CLFFT2D &) = delete;
+    /** Prevent instances of this class from being copied */
+    CLFFT2D &operator=(const CLFFT2D &) = delete;
+    /** Default move constructor */
+    CLFFT2D(CLFFT2D &&) = default;
+    /** Default move assignment operator */
+    CLFFT2D &operator=(CLFFT2D &&) = default;
+    /** Default destructor */
+    ~CLFFT2D();
     /** Initialise the function's source, destinations and border mode.
      *
-     * @param[in]  input  Source tensor. Data types supported: F32.
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src    |dst    |
+     * |:------|:------|
+     * |F32    |F32    |
+     * |F16    |F16    |
+     *
+     * @param[in]  input  Source tensor. Data types supported: F16/F32.
      * @param[out] output Destination tensor. Data types and data layouts supported: Same as @p input.
      * @param[in]  config FFT related configuration
      */
@@ -56,14 +75,14 @@ public:
     /** Initialise the function's source, destinations and border mode.
      *
      * @param[in]  compile_context The compile context to be used.
-     * @param[in]  input           Source tensor. Data types supported: F32.
+     * @param[in]  input           Source tensor. Data types supported: F16/F32.
      * @param[out] output          Destination tensor. Data types and data layouts supported: Same as @p input.
      * @param[in]  config          FFT related configuration
      */
     void configure(const CLCompileContext &compile_context, const ICLTensor *input, ICLTensor *output, const FFT2DInfo &config);
     /** Static function to check if given info will lead to a valid configuration of @ref CLFFT2D.
      *
-     * @param[in] input  Source tensor info. Data types supported: F32.
+     * @param[in] input  Source tensor info. Data types supported: F16/F32.
      * @param[in] output Destination tensor info. Data types and data layouts supported: Same as @p input.
      * @param[in] config FFT related configuration
      *

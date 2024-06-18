@@ -38,7 +38,7 @@ PROJECT_NAME           = "Compute Library"
 # could be handy for archiving the generated documentation or if some version
 # control system is used.
 
-PROJECT_NUMBER         = 20.08
+PROJECT_NUMBER         = 22.02
 
 # Using the PROJECT_BRIEF tag one can provide an optional one line description
 # for a project that appears at the top of each page and should give viewer a
@@ -291,7 +291,7 @@ OPTIMIZE_OUTPUT_VHDL   = NO
 # Note that for custom extensions you also need to set FILE_PATTERNS otherwise
 # the files are not read by doxygen.
 
-EXTENSION_MAPPING      = cl=C
+EXTENSION_MAPPING      = cl=C bp=C dir=C
 
 # If the MARKDOWN_SUPPORT tag is enabled then doxygen pre-processes all comments
 # according to the Markdown format, which allows for more readable
@@ -364,7 +364,7 @@ SUBGROUPING            = YES
 
 # When the INLINE_GROUPED_CLASSES tag is set to YES, classes, structs and unions
 # are shown inside the group in which they are included (e.g. using \ingroup)
-# instead of on a separate page (for HTML and Man pages) or section (for LaTeX
+# instead of on a separate page (for HTML and Manual pages) or section (for LaTeX
 # and RTF).
 #
 # Note that this feature does not work in combination with
@@ -378,7 +378,7 @@ INLINE_GROUPED_CLASSES = NO
 # the documentation of the scope in which they are defined (i.e. file,
 # namespace, or group documentation), provided this scope is documented. If set
 # to NO, structs, classes, and unions are shown on a separate page (for HTML and
-# Man pages) or section (for LaTeX and RTF).
+# Manual pages) or section (for LaTeX and RTF).
 # The default value is: NO.
 
 INLINE_SIMPLE_STRUCTS  = NO
@@ -687,7 +687,7 @@ FILE_VERSION_FILTER    =
 # DoxygenLayout.xml, doxygen will parse it automatically even if the LAYOUT_FILE
 # tag is left empty.
 
-LAYOUT_FILE            = 
+LAYOUT_FILE            = ./docs/DoxygenLayout.xml
 
 # The CITE_BIB_FILES tag can be used to specify one or more bib files containing
 # the reference definitions. This must be a list of .bib files. The .bib
@@ -768,19 +768,27 @@ WARN_LOGFILE           =
 # spaces.
 # Note: If this tag is empty the current directory is searched.
 
-INPUT                  = ./docs/00_introduction.dox \
-                         ./docs/01_library.dox \
-                         ./docs/02_tests.dox \
-                         ./docs/03_scripts.dox \
-                         ./docs/04_adding_operator.dox \
-                         ./docs/05_contribution_guidelines.dox \
-                         ./docs/06_functions_list.dox \
-                         ./docs/07_errata.dox \
+INPUT                  = ./docs/user_guide/introduction.dox \
+                         ./docs/user_guide/how_to_build_and_run_examples.dox \
+                         ./docs/user_guide/library.dox \
+                         ./docs/user_guide/data_type.dox \
+                         ./docs/user_guide/data_layout.dox \
+                         ./docs/user_guide/operator_list.dox \
+                         ./docs/user_guide/tests.dox \
+                         ./docs/user_guide/advanced.dox \
+                         ./docs/user_guide/release_version_and_change_log.dox \
+                         ./docs/user_guide/errata.dox \
+                         ./docs/contributor_guide/contribution_guidelines.dox \
+                         ./docs/contributor_guide/adding_operator.dox \
+                         ./docs/contributor_guide/implementation_topics.dox \
+                         ./docs/ComputeLibrary.dir \
                          ./arm_compute/ \
                          ./src/ \
                          ./examples/ \
                          ./tests/ \
                          ./utils/ \
+                         ./Android.bp \
+                         ./scripts \
                          ./support/
 
 # This tag can be used to specify the character encoding of the source files
@@ -843,6 +851,8 @@ FILE_PATTERNS          = *.c \
                          *.qsf \
                          *.as \
                          *.js \
+                         *.bp \
+                         *.dir \
                          *.cl
 
 # The RECURSIVE tag can be used to specify whether or not subdirectories should
@@ -864,7 +874,6 @@ EXCLUDE                = ./arm_compute/core/NEON/kernels/assembly/ \
                          ./src/core/NEON/kernels/convolution/ \
                          ./src/core/NEON/kernels/NELKTrackerKernel.cpp \
                          ./src/core/NEON/kernels/NEL2NormalizeLayerKernel.cpp \
-                         ./src/core/GLES_COMPUTE/cs_shaders/ \
                          ./tests/datasets/ \
                          ./tests/benchmark/fixtures/ \
                          ./tests/validation/fixtures/
@@ -1077,7 +1086,7 @@ CLANG_ASSISTED_PARSING = NO
 # specified with INPUT and INCLUDE_PATH.
 # This tag requires that the tag CLANG_ASSISTED_PARSING is set to YES.
 
-CLANG_OPTIONS          = -std=c++11
+CLANG_OPTIONS          = -std=c++14
 
 #---------------------------------------------------------------------------
 # Configuration options related to the alphabetical class index
@@ -1873,16 +1882,16 @@ RTF_EXTENSIONS_FILE    =
 #RTF_SOURCE_CODE        = NO
 
 #---------------------------------------------------------------------------
-# Configuration options related to the man page output
+# Configuration options related to the manual page output
 #---------------------------------------------------------------------------
 
-# If the GENERATE_MAN tag is set to YES, doxygen will generate man pages for
+# If the GENERATE_MAN tag is set to YES, doxygen will generate manual pages for
 # classes and files.
 # The default value is: NO.
 
 GENERATE_MAN           = NO
 
-# The MAN_OUTPUT tag is used to specify where the man pages will be put. If a
+# The MAN_OUTPUT tag is used to specify where the manual pages will be put. If a
 # relative path is entered the value of OUTPUT_DIRECTORY will be put in front of
 # it. A directory man3 will be created inside the directory specified by
 # MAN_OUTPUT.
@@ -1892,7 +1901,7 @@ GENERATE_MAN           = NO
 MAN_OUTPUT             = man
 
 # The MAN_EXTENSION tag determines the extension that is added to the generated
-# man pages. In case the manual section does not start with a number, the number
+# manual pages. In case the manual section does not start with a number, the number
 # 3 is prepended. The dot (.) at the beginning of the MAN_EXTENSION tag is
 # optional.
 # The default value is: .3.
@@ -1901,15 +1910,15 @@ MAN_OUTPUT             = man
 MAN_EXTENSION          = .3
 
 # The MAN_SUBDIR tag determines the name of the directory created within
-# MAN_OUTPUT in which the man pages are placed. If defaults to man followed by
+# MAN_OUTPUT in which the manual pages are placed. If defaults to man followed by
 # MAN_EXTENSION with the initial . removed.
 # This tag requires that the tag GENERATE_MAN is set to YES.
 
 #MAN_SUBDIR             = 
 
 # If the MAN_LINKS tag is set to YES and doxygen generates man output, then it
-# will generate one additional man file for each entity documented in the real
-# man page(s). These additional files only source the real man page, but without
+# will generate one additional manual file for each entity documented in the real
+# manual page(s). These additional files only source the real manual page, but without
 # them the man command would be unable to find the correct page.
 # The default value is: NO.
 # This tag requires that the tag GENERATE_MAN is set to YES.
@@ -2059,7 +2068,7 @@ SEARCH_INCLUDES        = YES
 # preprocessor.
 # This tag requires that the tag SEARCH_INCLUDES is set to YES.
 
-INCLUDE_PATH           = 
+INCLUDE_PATH           = ./src/core/CL/cl_kernels/
 
 # You can use the INCLUDE_FILE_PATTERNS tag to specify one or more wildcard
 # patterns (like *.h and *.hpp) to filter out the header-files in the

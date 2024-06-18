@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,13 +21,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/NEON/kernels/NEBitwiseAndKernel.h"
+#include "src/core/NEON/kernels/NEBitwiseAndKernel.h"
 
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/ITensor.h"
-#include "arm_compute/core/NEON/wrapper/wrapper.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Validate.h"
+#include "src/core/NEON/wrapper/wrapper.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/helpers/WindowHelpers.h"
 
 #include <arm_neon.h>
 #include <cstdint>
@@ -88,11 +90,6 @@ void NEBitwiseAndKernel::configure(const ITensor *input1, const ITensor *input2,
                               AccessWindowHorizontal(input1->info(), 0, num_elems_processed_per_iteration),
                               AccessWindowHorizontal(input2->info(), 0, num_elems_processed_per_iteration),
                               output_access);
-
-    const ValidRegion valid_region = intersect_valid_regions(input1->info()->valid_region(),
-                                                             input2->info()->valid_region());
-
-    output_access.set_valid_region(win, valid_region);
 
     INEKernel::configure(win);
 }

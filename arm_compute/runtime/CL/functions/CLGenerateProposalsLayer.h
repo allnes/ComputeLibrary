@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -23,35 +23,40 @@
  */
 #ifndef ARM_COMPUTE_CLGENERATEPROPOSALSLAYER_H
 #define ARM_COMPUTE_CLGENERATEPROPOSALSLAYER_H
-#include "arm_compute/core/CL/kernels/CLBoundingBoxTransformKernel.h"
-#include "arm_compute/core/CL/kernels/CLDequantizationLayerKernel.h"
-#include "arm_compute/core/CL/kernels/CLGenerateProposalsLayerKernel.h"
-#include "arm_compute/core/CL/kernels/CLPadLayerKernel.h"
-#include "arm_compute/core/CL/kernels/CLPermuteKernel.h"
-#include "arm_compute/core/CL/kernels/CLQuantizationLayerKernel.h"
+
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
+#include "arm_compute/runtime/CL/functions/CLPermute.h"
 #include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
 #include "arm_compute/runtime/CPP/CPPScheduler.h"
 #include "arm_compute/runtime/CPP/functions/CPPBoxWithNonMaximaSuppressionLimit.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/MemoryGroup.h"
 
+#include <memory>
+
 namespace arm_compute
 {
+class CLCompileContext;
+class CLBoundingBoxTransformKernel;
+class CLDequantizationLayer;
+class CLComputeAllAnchorsKernel;
+class CLPadLayerKernel;
+class CLQuantizationLayer;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to generate proposals for a RPN (Region Proposal Network)
  *
  * This function calls the following OpenCL kernels:
- * -# @ref CLComputeAllAnchors
+ * -# @ref CLComputeAllAnchorsKernel
  * -# @ref CLPermute x 2
  * -# @ref CLReshapeLayer x 2
  * -# @ref CLBoundingBoxTransform
  * -# @ref CLPadLayerKernel
- * -# @ref CLDequantizationLayerKernel x 2
- * -# @ref CLQuantizationLayerKernel
+ * -# @ref CLDequantizationLayer x 2
+ * -# @ref CLQuantizationLayer
  * And the following CPP functions:
  * -# @ref CPPBoxWithNonMaximaSuppressionLimit
  */
@@ -67,8 +72,20 @@ public:
     CLGenerateProposalsLayer(const CLGenerateProposalsLayer &) = delete;
     /** Prevent instances of this class from being copied (As this class contains pointers) */
     CLGenerateProposalsLayer &operator=(const CLGenerateProposalsLayer &) = delete;
+    /** Default destructor */
+    ~CLGenerateProposalsLayer();
 
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src0           |src1               |src2     |dst            |
+     * |:--------------|:------------------|:--------|:--------------|
+     * |F16            |F16                |F16      |F16            |
+     * |F32            |F32                |F32      |F32            |
+     * |QASYMM8        |QSYMM8             |QSYMM16  |QASYMM8        |
      *
      * @param[in]  scores              Scores from convolution layer of size (W, H, A), where H and W are the height and width of the feature map, and A is the number of anchors.
      *                                 Data types supported: QASYMM8/F16/F32
@@ -130,16 +147,16 @@ private:
     MemoryGroup _memory_group;
 
     // OpenCL kernels
-    CLPermuteKernel              _permute_deltas_kernel;
-    CLReshapeLayer               _flatten_deltas;
-    CLPermuteKernel              _permute_scores_kernel;
-    CLReshapeLayer               _flatten_scores;
-    CLComputeAllAnchorsKernel    _compute_anchors_kernel;
-    CLBoundingBoxTransformKernel _bounding_box_kernel;
-    CLPadLayerKernel             _pad_kernel;
-    CLDequantizationLayerKernel  _dequantize_anchors;
-    CLDequantizationLayerKernel  _dequantize_deltas;
-    CLQuantizationLayerKernel    _quantize_all_proposals;
+    CLPermute                                     _permute_deltas;
+    CLReshapeLayer                                _flatten_deltas;
+    CLPermute                                     _permute_scores;
+    CLReshapeLayer                                _flatten_scores;
+    std::unique_ptr<CLComputeAllAnchorsKernel>    _compute_anchors_kernel;
+    std::unique_ptr<CLBoundingBoxTransformKernel> _bounding_box_kernel;
+    std::unique_ptr<CLPadLayerKernel>             _pad_kernel;
+    std::unique_ptr<CLDequantizationLayer>        _dequantize_anchors;
+    std::unique_ptr<CLDequantizationLayer>        _dequantize_deltas;
+    std::unique_ptr<CLQuantizationLayer>          _quantize_all_proposals;
 
     // CPP functions
     CPPBoxWithNonMaximaSuppressionLimit _cpp_nms;

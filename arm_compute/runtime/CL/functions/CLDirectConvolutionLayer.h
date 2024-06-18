@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,8 +24,6 @@
 #ifndef ARM_COMPUTE_CLDIRECTCONVOLUTIONLAYER_H
 #define ARM_COMPUTE_CLDIRECTCONVOLUTIONLAYER_H
 
-#include "arm_compute/core/CL/kernels/CLDirectConvolutionLayerKernel.h"
-#include "arm_compute/core/CL/kernels/CLFillBorderKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/CL/functions/CLActivationLayer.h"
 #include "arm_compute/runtime/IFunction.h"
@@ -34,16 +32,40 @@
 
 namespace arm_compute
 {
+class CLCompileContext;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to execute direct convolution function:
  */
 class CLDirectConvolutionLayer : public IFunction
 {
 public:
-    /** Default constructor */
+    /** Constructor */
     CLDirectConvolutionLayer();
+    /** Destructor */
+    ~CLDirectConvolutionLayer();
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    CLDirectConvolutionLayer(const CLDirectConvolutionLayer &) = delete;
+    /** Default move constructor */
+    CLDirectConvolutionLayer(CLDirectConvolutionLayer &&);
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    CLDirectConvolutionLayer &operator=(const CLDirectConvolutionLayer &) = delete;
+    /** Default move assignment operator */
+    CLDirectConvolutionLayer &operator=(CLDirectConvolutionLayer &&);
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0           |src1           |src2   |dst            |
+     * |:--------------|:--------------|:------|:--------------|
+     * |F16            |F16            |F16    |F16            |
+     * |F32            |F32            |F32    |F32            |
+     * |QASYMM8        |QASYMM8        |S32    |QASYMM8        |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED |S32    |QASYMM8_SIGNED |
      *
      * @param[in]  input     Source tensor. 3 lower dimensions represent a single input [width, height, IFM],
      *                       while every optional dimension from 4 and above represent a batch of inputs.
@@ -95,11 +117,8 @@ public:
     void run() override;
 
 private:
-    CLDirectConvolutionLayerKernel _direct_conv_kernel;
-    CLFillBorderKernel             _input_border_handler;
-    CLActivationLayer              _activationlayer_function;
-
-    bool _is_activationlayer_enabled;
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
 };
 }
 #endif /* ARM_COMPUTE_CLDIRECTCONVOLUTIONLAYER_H */

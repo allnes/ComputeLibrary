@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -23,6 +23,9 @@
  */
 #ifndef ARM_COMPUTE_RUNTIME_FUNCTION_DESCRIPTORS_H
 #define ARM_COMPUTE_RUNTIME_FUNCTION_DESCRIPTORS_H
+
+#include "arm_compute/core/Types.h"
+
 #include <utility>
 
 namespace arm_compute
@@ -48,5 +51,52 @@ struct FFT2DInfo
     unsigned int axis1{ 1 };                         /**< Axis to run second pass on. If same, multiple transforms are performed on single axis*/
     FFTDirection direction{ FFTDirection::Forward }; /**< Direction of the FFT. */
 };
+
+/** Descriptor used by the 2d Convolution function */
+struct Conv2dInfo
+{
+    Conv2dInfo() = default;
+
+    Conv2dInfo(const PadStrideInfo                           &conv_info,
+               const Size2D                                  &dilation,
+               const ActivationLayerInfo                     &act_info,
+               bool                                           enable_fast_math,
+               unsigned int                                   num_groups,
+               const experimental::PostOpList<ITensorInfo *> &post_ops = experimental::PostOpList<ITensorInfo *> {})
+        : conv_info(conv_info), dilation(dilation), act_info(act_info), enable_fast_math(enable_fast_math), num_groups(num_groups), post_ops(post_ops)
+    {
+    }
+
+    PadStrideInfo                           conv_info{};
+    Size2D                                  dilation{ 1U, 1U };
+    ActivationLayerInfo                     act_info{};
+    bool                                    enable_fast_math{ false };
+    unsigned int                            num_groups{ 1 };
+    experimental::PostOpList<ITensorInfo *> post_ops{};
+};
+
+/** Descriptor used by the 3d Convolution function */
+struct Conv3dInfo
+{
+    Conv3dInfo() = default;
+
+    Conv3dInfo(const Size3D                &stride,
+               const Padding3D             &padding,
+               const ActivationLayerInfo   &act_info,
+               const Size3D                &dilation,
+               const DimensionRoundingType &round_type,
+               bool                         enable_fast_math)
+        : stride(stride), padding(padding), act_info(act_info), dilation(dilation), round_type(round_type), enable_fast_math(enable_fast_math)
+    {
+    }
+
+    Size3D                stride{ 1U, 1U, 1U };
+    Padding3D             padding{};
+    ActivationLayerInfo   act_info{};
+    Size3D                dilation{ 1U, 1U, 1U };
+    DimensionRoundingType round_type{};
+    bool                  enable_fast_math{ false };
+};
+
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_RUNTIME_FUNCTION_DESCRIPTORS_H */

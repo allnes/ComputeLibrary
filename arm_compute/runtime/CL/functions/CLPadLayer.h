@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,19 +24,22 @@
 #ifndef ARM_COMPUTE_CLPADLAYER_H
 #define ARM_COMPUTE_CLPADLAYER_H
 
-#include "arm_compute/core/CL/kernels/CLCopyKernel.h"
-#include "arm_compute/core/CL/kernels/CLPadLayerKernel.h"
+#include "arm_compute/core/Error.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
+#include "arm_compute/runtime/CL/functions/CLCopy.h"
+#include "arm_compute/runtime/CL/functions/CLPermute.h"
 #include "arm_compute/runtime/IFunction.h"
 
 namespace arm_compute
 {
+class CLCompileContext;
+class CLPadLayerKernel;
 class ICLTensor;
 
 /** Basic function to pad a tensor. This function calls the following OpenCL functions/kernels:
  *
  *  -# @ref CLPadLayerKernel if there is padding to be added
- *  -# @ref CLCopyKernel otherwise
+ *  -# @ref CLCopy otherwise
  */
 class CLPadLayer : public IFunction
 {
@@ -51,8 +54,19 @@ public:
     CLPadLayer &operator=(const CLPadLayer &) = delete;
     /** Default move assignment operator */
     CLPadLayer &operator=(CLPadLayer &&) = default;
+    /** Default destructor */
+    ~CLPadLayer();
 
     /** Initialize the function
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src      |dst       |
+     * |:--------|:---------|
+     * |All      |All       |
      *
      * @param[in]  input          Source tensor. Data types supported: All.
      * @param[out] output         Output tensor. Data type supported: same as @p input
@@ -95,9 +109,9 @@ public:
 private:
     void configure_reflect_mode(ICLTensor *input, ICLTensor *output);
 
-    CLPadLayerKernel _pad_kernel;
-    CLCopyKernel     _copy_kernel;
-    bool             _perform_pad;
+    std::unique_ptr<CLPadLayerKernel> _pad_kernel;
+    CLCopy                            _copy;
+    bool                              _perform_pad;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_PADLAYER_H */

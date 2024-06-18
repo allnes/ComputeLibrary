@@ -9,7 +9,7 @@ The details of these strategies can be found in the documentations of the corres
 **CLGEMMMatrixMultiplyReshapedOnlyRHSKernel**.
 
 The Tuner consists of 2 scripts and 3 binaries:
-* benchmark_gemm_examples.sh and GemmTuner.py under examples/gemm_tuner, and
+* cl_gemm_benchmark and GemmTuner.py under examples/gemm_tuner, and
 * benchmark_cl_gemm_native, benchmark_cl_gemm_reshaped_rhs_only and benchmark_cl_gemm_reshaped under
   build/tests/gemm_tuner (you'll need to build the library first)
 
@@ -34,7 +34,7 @@ what kernel and subsequently what configurations for that kernels are the most p
 ### Step1: Prepare the shape and configs files
 1. We first need to identify the shapes that we are interested in and store them in a csv file, say *gemm_shapes.csv*.
 2. Then we need to specify a set of good GEMMConfig candidates for each kernel in 3 separate csv files (this requires
-    some prior heuristics, but can be provided by the ACL developers upon requests, based on your target device).
+    some prior heuristics, but can be provided by the Compute Library developers upon requests, based on your target device).
 
    Say we have *gemm_configs_native.csv", "gemm_configs_reshaped.csv" and "gemm_configs_reshaped_only_rhs.csv".
 
@@ -42,29 +42,39 @@ what kernel and subsequently what configurations for that kernels are the most p
 
 ### Step2: Push relevant files to the target device
 All the files that need to be present on the target device are:
-* benchmark script: \<ACL\>/examples/gemm_tuner/benchmark_gemm_examples.sh
+* benchmark script: \<ComputeLibrary\>/examples/gemm_tuner/cl_gemm_benchmark
 * shapes and configs csv files: gemm_shapes.csv, gemm_configs_native.csv, gemm_configs_reshaped_only_rhs.csv, gemm_configs_reshaped.csv
-* Example benchmark binaries: \<ACL\>/build/tests/gemm_tuner/benchmark_cl_gemm*
+* Example benchmark binaries: \<ComputeLibrary\>/build/tests/gemm_tuner/benchmark_cl_gemm*
 
 ### Step3: Collect benchmark data
 With these files on device, we can collect benchmark data using the script. Assume all the example binaries are pushed
 to a folder called *gemm_tuner*. While logged onto our device:
 ```
 # Native
-./benchmark_gemm_examples.sh -s native -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_native.csv -o results/native
+./cl_gemm_benchmark -s native -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_native.csv -o results/native
 # Reshaped Only RHS
-./benchmark_gemm_examples.sh -s reshaped_rhs_only -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped_only_rhs.csv -o results/reshaped_only_rhs
+./cl_gemm_benchmark -s reshaped_rhs_only -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped_only_rhs.csv -o results/reshaped_only_rhs
 # Reshaped
-./benchmark_gemm_examples.sh -s reshaped -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped.csv -o results/reshaped
+./cl_gemm_benchmark -s reshaped -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped.csv -o results/reshaped
 ```
 You can repeat the 3 commands above to have a bit redundancy in your benchmark data (as you can imagine, measurement is noisy),
 but you may need to change the output folder for each repeat
+
+It is also possible to split the benchmark phase among different platforms using the **-i** and **-n** options to specificy the starting experiment and the number of benchmark to run.
+
+# Reshaped benchmark on 3 different platforms
+## Platform 1
+./cl_gemm_benchmark -s reshaped -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped.csv -o results/reshaped -i 0 -n 8
+## Platform 2
+./cl_gemm_benchmark -s reshaped -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped.csv -o results/reshaped -i 8 -n 8
+## Platform 3
+./cl_gemm_benchmark -s reshaped -e ./gemm_tuner -g ./gemm_shapes.csv -c ./gemm_configs_reshaped.csv -o results/reshaped -i 16 -n 8
 
 ### Step4: Generate the heuristics
 1. After benchmarking, we pull the benchmark data, the *results* folder, from the target device to our host machine
 2. We use the GemmTuner.py script to give us the heuristics
    ```
-   python3 <ACL>/examples/gemm_tuner/GemmTuner.py -b ./results -o heuristics
+   python3 <ComputeLibrary>/examples/gemm_tuner/GemmTuner.py -b ./results -o heuristics
    ```
    When it's finished, there should be 4 json files in the *heuristics* folder
 
@@ -76,12 +86,12 @@ passing a lower value to *-t \<tolerance\>* to the GemmTuner.py script.
 * A target device to be tuned, plus the following on the device:
     * Android or Linux OS
     * Bash shell
-    * Built ACL with benchmark examples binaries
-    * benchmark_gemm_examples.sh script
+    * Built Compute Library with benchmark examples binaries
+    * cl_gemm_benchmark script
     * gemm shape file
 
        A csv file containing the **GEMMParam search list**. This is the list of GEMMParams/gemm shapes that we're
-       interested in (For more details see Approach section). The default list is prepared by ACL developers in advance
+       interested in (For more details see Approach section). The default list is prepared by Compute Library developers in advance
        and can be provided on request.
 
        The format is described as:
@@ -105,7 +115,7 @@ passing a lower value to *-t \<tolerance\>* to the GemmTuner.py script.
     * gemm config file  
       A csv file containing the **GEMMConfig search list**. This is the list of candidate GEMMConfigs among which we
       search for the optimal one. **Note that we have a different list for each strategy.**
-      The default lists are prepared by ACL developers in advance and can be provided on request.
+      The default lists are prepared by Compute Library developers in advance and can be provided on request.
 
       The format of the file for each strategy is the same:  
 
@@ -202,13 +212,13 @@ passing a lower value to *-t \<tolerance\>* to the GemmTuner.py script.
 ## Usage
 The usage of the 2 scripts:
 
-1. benchmark_gemm_examples.sh
+1. cl_gemm_benchmark
 
-   Run the shell script (**benchmark_gemm_examples.sh**) on your **target device**. Note that all the built benchmark
+   Run the shell script (**cl_gemm_benchmark**) on your **target device**. Note that all the built benchmark
    examples: build/tests/gemm_tuner/benchmark_cl_gemm*, have to be present on your target device prior to running.
    The benchmark results will be saved to json files in an output directory.
    ```
-   Usage: benchmark_gemm_examples.sh [-h] -s \<strategy\> -e \<example_binary_dir\> -g \<gemm_shape_file\>
+   Usage: cl_gemm_benchmark [-h] -s \<strategy\> -e \<example_binary_dir\> -g \<gemm_shape_file\>
    -c \<gemm_config_file\> [-d \<data_type\>] [-o \<out_dir\>]
 
    Options:

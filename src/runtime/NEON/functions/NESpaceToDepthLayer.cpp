@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -29,9 +29,13 @@
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/runtime/NEON/NEScheduler.h"
+#include "src/common/utils/Log.h"
+#include "src/core/NEON/kernels/NESpaceToDepthLayerKernel.h"
 
 namespace arm_compute
 {
+NESpaceToDepthLayer::~NESpaceToDepthLayer() = default;
+
 NESpaceToDepthLayer::NESpaceToDepthLayer()
     : _space_to_depth_kernel()
 {
@@ -40,7 +44,10 @@ NESpaceToDepthLayer::NESpaceToDepthLayer()
 void NESpaceToDepthLayer::configure(const ITensor *input, ITensor *output, int32_t block_shape)
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
-    _space_to_depth_kernel.configure(input, output, block_shape);
+    ARM_COMPUTE_LOG_PARAMS(input, output, block_shape);
+
+    _space_to_depth_kernel = std::make_unique<NESpaceToDepthLayerKernel>();
+    _space_to_depth_kernel->configure(input, output, block_shape);
 }
 
 Status NESpaceToDepthLayer::validate(const ITensorInfo *input, const ITensorInfo *output, int32_t block_shape)
@@ -51,6 +58,6 @@ Status NESpaceToDepthLayer::validate(const ITensorInfo *input, const ITensorInfo
 
 void NESpaceToDepthLayer::run()
 {
-    NEScheduler::get().schedule(&_space_to_depth_kernel, Window::DimY);
+    NEScheduler::get().schedule(_space_to_depth_kernel.get(), Window::DimY);
 }
 } // namespace arm_compute

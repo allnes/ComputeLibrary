@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,7 +25,9 @@
 #define ARM_COMPUTE_CL_REDUCE_MEAN_H
 
 #include "arm_compute/runtime/CL/ICLSimpleFunction.h"
+#include "arm_compute/runtime/CL/functions/CLDequantizationLayer.h"
 #include "arm_compute/runtime/CL/functions/CLElementwiseOperations.h"
+#include "arm_compute/runtime/CL/functions/CLQuantizationLayer.h"
 #include "arm_compute/runtime/CL/functions/CLReductionOperation.h"
 #include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
 #include "arm_compute/runtime/IMemoryManager.h"
@@ -42,6 +44,17 @@ public:
     /** Default constructor */
     CLReduceMean(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
     /** Configure kernel
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |QASYMM8        |QASYMM8        |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED |
+     * |F16            |F16            |
+     * |F32            |F32            |
      *
      * @note Supported tensor rank: up to 4
      *
@@ -82,8 +95,13 @@ private:
     std::vector<CLReductionOperation> _reduction_kernels;
     std::vector<CLTensor>             _reduced_outs;
     CLReshapeLayer                    _reshape;
+    CLDequantizationLayer             _dequant;
+    CLQuantizationLayer               _requant;
     int                               _reduction_ops;
     bool                              _keep_dims;
+    bool                              _do_requant;
+    CLTensor                          _input_no_quant;
+    CLTensor                          _output_no_quant;
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_CL_REDUCE_MEAN_H */

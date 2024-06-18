@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -50,6 +50,29 @@ namespace detail
 inline arm_compute::ITensorInfo *get_backing_tensor_info(arm_compute::graph::Tensor *tensor)
 {
     return ((tensor == nullptr) || (tensor->handle() == nullptr)) ? nullptr : tensor->handle()->tensor().info();
+}
+
+/** Validates a ArgMinMax layer node
+ *
+ * @tparam ArgMinMax layer function type
+ *
+ * @param[in] node Node to validate
+ *
+ * @return Status
+ */
+template <typename ArgMinMaxLayer>
+Status validate_arg_min_max_layer(ArgMinMaxLayerNode &node)
+{
+    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating ArgMinMaxLayer node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 1);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
+
+    // Extract IO and info
+    arm_compute::ITensorInfo *input  = detail::get_backing_tensor_info(node.input(0));
+    arm_compute::ITensorInfo *output = get_backing_tensor_info(node.output(0));
+
+    // Validate function
+    return ArgMinMaxLayer::validate(input, node.axis(), output, node.reduction_operation());
 }
 
 /** Validates a Bounding Box Transform layer node
@@ -160,6 +183,42 @@ Status validate_convolution_layer(ConvolutionLayerNode &node)
     return status;
 }
 
+/** Validates a Convolution layer node
+ *
+ * @tparam GEMMConvolutionLayer      GEMM Convolution layer function type
+ *
+ * @param[in] node Node to validate
+ *
+ * @return Status
+ */
+template <typename GEMMConvolutionLayer>
+Status validate_fused_convolution_with_post_op(FusedConvolutionWithPostOpNode &node)
+{
+    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating fused ConvolutionLayer node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 4);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
+
+    // Extract IO and info
+    arm_compute::ITensorInfo *input   = get_backing_tensor_info(node.input(0));
+    arm_compute::ITensorInfo *weights = get_backing_tensor_info(node.input(1));
+    arm_compute::ITensorInfo *biases  = get_backing_tensor_info(node.input(2));
+    arm_compute::ITensorInfo *output  = get_backing_tensor_info(node.output(0));
+
+    if(is_data_type_quantized_asymmetric(input->data_type()))
+    {
+        biases->set_data_type(DataType::S32);
+    }
+
+    const PadStrideInfo conv_info = node.convolution_info();
+    //const ConvolutionMethod conv_algorithm = node.convolution_method();
+    //const bool              fast_math      = node.fast_math_hint() == FastMathHint::Enabled;
+    const unsigned int num_groups = node.num_groups();
+
+    // Validate function
+    return GEMMConvolutionLayer::validate(input, weights, biases, output, conv_info,
+                                          WeightsInfo(), Size2D(1, 1), ActivationLayerInfo(), num_groups);
+}
+
 /** Validates a Depthwise Convolution layer node
  *
  * @tparam DepthwiseConvolutionLayer    Default Depthwise Convolution layer type
@@ -198,6 +257,27 @@ Status validate_depthwise_convolution_layer(DepthwiseConvolutionLayerNode &node)
     }
 
     return status;
+}
+/** Validates a depth to space layer node
+ *
+ * @tparam DequantizationLayer Dequantize layer type
+ *
+ * @param[in] node Node to validate
+ *
+ * @return Status
+ */
+template <typename DepthToSpaceLayer>
+Status validate_depth_to_space_layer(DepthToSpaceLayerNode &node)
+{
+    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating DetectionOutputLayer node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 1);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
+
+    // Extract IO and info
+    arm_compute::ITensorInfo *input  = get_backing_tensor_info(node.input(0));
+    arm_compute::ITensorInfo *output = get_backing_tensor_info(node.output(0));
+
+    return DepthToSpaceLayer::validate(input, output, node.block_shape());
 }
 /** Validates a dequantize layer node
  *
@@ -297,6 +377,31 @@ Status validate_generate_proposals_layer(GenerateProposalsLayerNode &node)
     const GenerateProposalsInfo info                = node.info();
 
     return GenerateProposalsLayer::validate(scores, deltas, anchors, proposals, scores_out, num_valid_proposals, info);
+}
+
+/** Validates a L2Normalization layer node
+ *
+ * @tparam L2Normalization layer type
+ *
+ * @param[in] node Node to validate
+ *
+ * @return Status
+ */
+template <typename L2NormalizeLayer>
+Status validate_l2_normalize_layer(L2NormalizeLayerNode &node)
+{
+    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating L2NormalizeLayerNode node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 1);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
+
+    // Extract IO and info
+    arm_compute::ITensorInfo *input   = detail::get_backing_tensor_info(node.input(0));
+    arm_compute::ITensorInfo *output  = get_backing_tensor_info(node.output(0));
+    int                       axis    = node.axis();
+    float                     epsilon = node.epsilon();
+
+    // Validate function
+    return L2NormalizeLayer::validate(input, output, axis, epsilon);
 }
 
 /** Validates a NormalizePlanarYUV layer node
@@ -440,6 +545,30 @@ Status validate_quantization_layer(QuantizationLayerNode &node)
     return QuantizationLayer::validate(input, output);
 }
 
+/** Validates a Reduction operation layer node
+ *
+ * @tparam ReductionLayer Reduction layer type
+ *
+ * @param[in] node Node to validate
+ *
+ * @return Status
+ */
+template <typename ReductionLayer>
+Status validate_reduction_operation_layer(ReductionLayerNode &node)
+{
+    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating ReductionLayer node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
+
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 1);
+    ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
+
+    // Extract input and output
+    arm_compute::ITensorInfo *input  = detail::get_backing_tensor_info(node.input(0));
+    arm_compute::ITensorInfo *output = get_backing_tensor_info(node.output(0));
+
+    // Validate function
+    return ReductionLayer::validate(input, output, node.axis(), node.op(), node.keep_dims());
+}
+
 /** Validates a Reorg layer node
  *
  * @tparam ReorgLayer Reorg layer type
@@ -535,50 +664,32 @@ Status validate_slice_layer(SliceLayerNode &node)
     return SliceLayer::validate(input, output, starts, ends);
 }
 
-/** Validates a Upsample layer node
+/** Validates a Strided Slice layer node
  *
- * @tparam UpsampleLayer Upsample layer type
- *
- * @param[in] node Node to validate
- *
- * @return Status
- */
-template <typename UpsampleLayer>
-Status validate_upsample_layer(UpsampleLayerNode &node)
-{
-    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating UpsampleLayer node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
-    ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 1);
-    ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
-
-    // Extract input and output
-    arm_compute::ITensorInfo *input  = detail::get_backing_tensor_info(node.input(0));
-    arm_compute::ITensorInfo *output = get_backing_tensor_info(node.output(0));
-
-    // Validate function
-    return UpsampleLayer::validate(input, output, node.info(), node.upsampling_policy());
-}
-/** Validates a YOLO layer node
- *
- * @tparam YOLOLayer YOLO layer type
+ * @tparam StridedSliceLayer Strided Slice layer function type
  *
  * @param[in] node Node to validate
  *
  * @return Status
  */
-template <typename YOLOLayer>
-Status validate_yolo_layer(YOLOLayerNode &node)
+template <typename StridedSliceLayer>
+Status validate_strided_slice_layer(StridedSliceLayerNode &node)
 {
-    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating YOLOLayer node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
+    ARM_COMPUTE_LOG_GRAPH_VERBOSE("Validating StridedSlice node with ID : " << node.id() << " and Name: " << node.name() << std::endl);
     ARM_COMPUTE_RETURN_ERROR_ON(node.num_inputs() != 1);
     ARM_COMPUTE_RETURN_ERROR_ON(node.num_outputs() != 1);
 
-    // Extract input and output
-    arm_compute::ITensorInfo *input  = detail::get_backing_tensor_info(node.input(0));
-    arm_compute::ITensorInfo *output = get_backing_tensor_info(node.output(0));
+    // Extract IO and info
+    arm_compute::ITensorInfo   *input   = get_backing_tensor_info(node.input(0));
+    arm_compute::ITensorInfo   *output  = get_backing_tensor_info(node.output(0));
+    const Coordinates           starts  = node.starts();
+    const Coordinates           ends    = node.ends();
+    const BiStrides             strides = node.strides();
+    const StridedSliceLayerInfo info    = node.strided_slice_info();
 
-    // Validate function
-    return YOLOLayer::validate(input, output, node.activation_info(), node.num_classes());
+    return StridedSliceLayer::validate(input, output, starts, ends, strides, info.begin_mask(), info.end_mask(), info.shrink_axis_mask());
 }
+
 /** Validates a element-wise layer node
  *
  * @param[in] node Node to validate
@@ -601,7 +712,6 @@ Status validate_eltwise_Layer(EltwiseLayerNode &node)
     const RoundingPolicy            round_policy   = node.rounding_policy();
     const ActivationLayerInfo       act_info       = node.fused_activation();
     const QuantizationInfo          quant_info     = node.output_quant_info();
-    const float                     scale          = (quant_info.scale().empty()) ? 1.0f : quant_info.scale()[0];
 
     // Validate function
     if(eltwise_op == EltwiseOperation::Add)
@@ -614,7 +724,15 @@ Status validate_eltwise_Layer(EltwiseLayerNode &node)
     }
     else if(eltwise_op == EltwiseOperation::Mul)
     {
-        return EltwiseLayerFunctions::PixelWiseMultiplication::validate(input1, input2, output, scale, convert_policy, round_policy, act_info);
+        return EltwiseLayerFunctions::PixelWiseMultiplication::validate(input1, input2, output, 1.0f, convert_policy, round_policy, act_info);
+    }
+    else if(eltwise_op == EltwiseOperation::Max)
+    {
+        return EltwiseLayerFunctions::ElementwiseMax::validate(input1, input2, output, act_info);
+    }
+    else if(eltwise_op == EltwiseOperation::Div)
+    {
+        return EltwiseLayerFunctions::ArithmeticDivision::validate(input1, input2, output, act_info);
     }
     else
     {

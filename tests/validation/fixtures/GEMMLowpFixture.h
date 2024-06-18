@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -78,10 +78,14 @@ void fill(U &&tensor, int i)
             break;
         }
         case DataType::F16:
+        {
+            arm_compute::utils::uniform_real_distribution_16bit<half> distribution{ -1.0f, 1.0f };
+            library->fill(tensor, distribution, i);
+            break;
+        }
         case DataType::F32:
         {
-            // Between 1 and 254 in order to avoid having -128 and 128 for the DOT product path
-            std::uniform_real_distribution<> distribution(-1.0f, 1.0f);
+            std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
             library->fill(tensor, distribution, i);
             break;
         }
@@ -93,7 +97,7 @@ void fill(U &&tensor, int i)
 template <typename TensorType, typename AccessorType, typename FunctionType, bool reinterpret_input_as_3d, bool reinterpret_output_as_3d, typename OutputType, bool is_fused = false>
 TensorType compute_gemmlowp_target(const TensorShape &shape_a, const TensorShape &shape_b, const TensorShape &shape_output, int32_t a_offset, int32_t b_offset,
                                    GEMMLowpOutputStageInfo output_stage = GEMMLowpOutputStageInfo(), DataType data_type_a = DataType::QASYMM8, DataType data_type_b = DataType::QASYMM8,
-                                   QuantizationInfo b_qinfo = QuantizationInfo())
+                                   QuantizationInfo b_qinfo = QuantizationInfo(), bool reshape_b_only_on_first_run = false)
 {
     // Create tensors
     DataType data_type_output = output_stage.type == GEMMLowpOutputStageType::NONE ? DataType::S32 : data_type_a;
@@ -122,21 +126,23 @@ TensorType compute_gemmlowp_target(const TensorShape &shape_a, const TensorShape
     // Create and configure function
     // The GEMMinfo includes the values of the depth in case of reinterpreted 3d input/output
     FunctionType gemmlowp;
-    // TODO (COMPMID-1672) - Extending the test to validate add bias in offset contribution
-    gemmlowp.configure(&a, &b, is_fused ? &bias : nullptr, &output, GEMMInfo(false, false, false, (reinterpret_output_as_3d ? shape_output[2] : 0), reinterpret_input_as_3d, false, output_stage));
+    gemmlowp.configure(&a, &b, is_fused ? &bias : nullptr, &output, GEMMInfo(false, false, reshape_b_only_on_first_run, (reinterpret_output_as_3d ? shape_output[2] : 0), reinterpret_input_as_3d, false,
+                                                                             output_stage));
 
-    ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(output.info()->is_resizable(), framework::LogLevel::ERRORS);
+    ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+    ARM_COMPUTE_ASSERT(b.info()->is_resizable());
+    ARM_COMPUTE_ASSERT(output.info()->is_resizable());
+
+    add_padding_x({ &a, &b, &output });
 
     // Allocate tensors
     a.allocator()->allocate();
     b.allocator()->allocate();
     output.allocator()->allocate();
 
-    ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(!output.info()->is_resizable(), framework::LogLevel::ERRORS);
+    ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+    ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
+    ARM_COMPUTE_ASSERT(!output.info()->is_resizable());
 
     // Fill tensors
     fill(AccessorType(a), 0);
@@ -144,9 +150,9 @@ TensorType compute_gemmlowp_target(const TensorShape &shape_a, const TensorShape
 
     if(is_fused)
     {
-        ARM_COMPUTE_EXPECT(bias.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(bias.info()->is_resizable());
         bias.allocator()->allocate();
-        ARM_COMPUTE_EXPECT(!bias.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!bias.info()->is_resizable());
         fill(AccessorType(bias), 2);
     }
     // Compute GEMM function
@@ -203,21 +209,22 @@ protected:
 };
 
 template <typename TensorType, typename AccessorType, typename FunctionType, bool reinterpret_input_as_3d = false, bool reinterpret_output_as_3d = false, typename TI = uint8_t, typename TW = uint8_t>
-class GEMMLowpMatrixMultiplyCoreFusedOffsetOutputValidationFixture : public framework::Fixture
+class GEMMLowpMatrixMultiplyCoreFusedOffsetOutputGenericValidationFixture : public framework::Fixture
 {
 public:
     template <typename...>
-    void setup(TensorShape shape_a, TensorShape shape_b, TensorShape shape_output, int32_t a_offset, int32_t b_offset, GEMMLowpOutputStageInfo output_stage, DataType data_type_b)
+    void setup(TensorShape shape_a, TensorShape shape_b, TensorShape shape_output, int32_t a_offset, int32_t b_offset, GEMMLowpOutputStageInfo output_stage, DataType data_type_b,
+               bool reshape_b_only_on_first_run)
     {
-        ARM_COMPUTE_EXPECT(output_stage.type != GEMMLowpOutputStageType::NONE, framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(output_stage.type != GEMMLowpOutputStageType::NONE);
         DataType data_type_a = data_type_b == DataType::QASYMM8_SIGNED ? DataType::QASYMM8_SIGNED : DataType::QASYMM8;
 
         if(data_type_b == DataType::QSYMM8_PER_CHANNEL)
         {
-            output_stage.is_quantized_per_channel         = true;
-            const size_t                     num_channels = shape_b[0];
-            std::vector<float>               scales(num_channels);
-            std::uniform_real_distribution<> distribution(0, 1);
+            output_stage.is_quantized_per_channel              = true;
+            const size_t                          num_channels = shape_b[0];
+            std::vector<float>                    scales(num_channels);
+            std::uniform_real_distribution<float> distribution(0.f, 1.f);
             library->fill(scales, distribution, 0);
             output_stage.gemmlowp_multipliers.resize(num_channels);
             output_stage.gemmlowp_shifts.resize(num_channels);
@@ -227,21 +234,21 @@ public:
             }
 
             _reference = compute_reference(shape_a, shape_b, shape_output, a_offset, 0, output_stage, data_type_a, data_type_b, QuantizationInfo(scales));
-            _target    = compute_target(shape_a, shape_b, shape_output, a_offset, 0, output_stage, data_type_a, data_type_b, QuantizationInfo(scales));
+            _target    = compute_target(shape_a, shape_b, shape_output, a_offset, 0, output_stage, data_type_a, data_type_b, QuantizationInfo(scales), reshape_b_only_on_first_run);
         }
         else
         {
             _reference = compute_reference(shape_a, shape_b, shape_output, a_offset, b_offset, output_stage, data_type_a, data_type_b, QuantizationInfo());
-            _target    = compute_target(shape_a, shape_b, shape_output, a_offset, b_offset, output_stage, data_type_a, data_type_b, QuantizationInfo());
+            _target    = compute_target(shape_a, shape_b, shape_output, a_offset, b_offset, output_stage, data_type_a, data_type_b, QuantizationInfo(), reshape_b_only_on_first_run);
         }
     }
 
 protected:
     TensorType compute_target(const TensorShape &shape_a, const TensorShape &shape_b, const TensorShape &shape_output, int32_t a_offset, int32_t b_offset, GEMMLowpOutputStageInfo output_stage,
-                              DataType data_type_a, DataType data_type_b, QuantizationInfo b_qinfo)
+                              DataType data_type_a, DataType data_type_b, QuantizationInfo b_qinfo, bool reshape_b_only_on_first_run = false)
     {
         return compute_gemmlowp_target<TensorType, AccessorType, FunctionType, reinterpret_input_as_3d, reinterpret_output_as_3d, qasymm8_t, true>(shape_a, shape_b, shape_output, a_offset, b_offset,
-                output_stage, data_type_a, data_type_b, b_qinfo);
+                output_stage, data_type_a, data_type_b, b_qinfo, reshape_b_only_on_first_run);
     }
 
     SimpleTensor<TI> compute_reference(const TensorShape &shape_a, const TensorShape &shape_b, const TensorShape &shape_output, int32_t a_offset, int32_t b_offset,
@@ -270,6 +277,19 @@ protected:
 
     TensorType       _target{};
     SimpleTensor<TI> _reference{};
+};
+
+template <typename TensorType, typename AccessorType, typename FunctionType, bool reinterpret_input_as_3d = false, bool reinterpret_output_as_3d = false, typename TI = uint8_t, typename TW = uint8_t>
+class GEMMLowpMatrixMultiplyCoreFusedOffsetOutputValidationFixture : public
+    GEMMLowpMatrixMultiplyCoreFusedOffsetOutputGenericValidationFixture<TensorType, AccessorType, FunctionType, reinterpret_input_as_3d, reinterpret_output_as_3d, TI, TW>
+{
+public:
+    template <typename...>
+    void setup(TensorShape shape_a, TensorShape shape_b, TensorShape shape_output, int32_t a_offset, int32_t b_offset, GEMMLowpOutputStageInfo output_stage, DataType data_type_b)
+    {
+        GEMMLowpMatrixMultiplyCoreFusedOffsetOutputGenericValidationFixture<TensorType, AccessorType, FunctionType, reinterpret_input_as_3d, reinterpret_output_as_3d, TI, TW>::setup(shape_a, shape_b,
+                shape_output, a_offset, b_offset, output_stage, data_type_b, false);
+    }
 };
 
 template <typename TensorType, typename AccessorType, typename FunctionType>
@@ -312,27 +332,27 @@ protected:
         output_stage_info.output_data_type        = DataType::QASYMM8;
         output_stage.configure(&a, add_bias ? &b : nullptr, &c, output_stage_info);
 
-        ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(c.info()->is_resizable());
 
         // Allocate tensors
         a.allocator()->allocate();
         c.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!c.info()->is_resizable());
 
         // Fill tensor
         fill(AccessorType(a), 0);
 
         if(add_bias)
         {
-            ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(b.info()->is_resizable());
 
             // Allocate bias tensor
             b.allocator()->allocate();
 
-            ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
 
             // Fill tensor
             fill(AccessorType(b), 1);
@@ -414,27 +434,27 @@ protected:
         output_stage_info.output_data_type        = DataType::QASYMM8_SIGNED;
         output_stage.configure(&a, add_bias ? &b : nullptr, &c, output_stage_info);
 
-        ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(c.info()->is_resizable());
 
         // Allocate tensors
         a.allocator()->allocate();
         c.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!c.info()->is_resizable());
 
         // Fill tensor
         fill(AccessorType(a), 0);
 
         if(add_bias)
         {
-            ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(b.info()->is_resizable());
 
             // Allocate bias tensor
             b.allocator()->allocate();
 
-            ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
 
             // Fill tensor
             fill(AccessorType(b), 1);
@@ -508,27 +528,27 @@ protected:
         FunctionType output_stage;
         output_stage.configure(&a, add_bias ? &b : nullptr, &c, result_fixedpoint_multiplier, result_shift, result_offset_after_shift, min, max);
 
-        ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(c.info()->is_resizable());
 
         // Allocate tensors
         a.allocator()->allocate();
         c.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!c.info()->is_resizable());
 
         // Fill tensor
         fill(AccessorType(a), 0);
 
         if(add_bias)
         {
-            ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(b.info()->is_resizable());
 
             // Allocate bias tensor
             b.allocator()->allocate();
 
-            ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
 
             // Fill tensor
             fill(AccessorType(b), 1);
@@ -603,27 +623,27 @@ protected:
         FunctionType output_stage;
         output_stage.configure(&a, add_bias ? &b : nullptr, &c, result_fixedpoint_multiplier, result_shift, result_offset_after_shift, min, max);
 
-        ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(c.info()->is_resizable());
 
         // Allocate tensors
         a.allocator()->allocate();
         c.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!c.info()->is_resizable());
 
         // Fill tensor
         fill(AccessorType(a), 0);
 
         if(add_bias)
         {
-            ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(b.info()->is_resizable());
 
             // Allocate bias tensor
             b.allocator()->allocate();
 
-            ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
 
             // Fill tensor
             fill(AccessorType(b), 1);
@@ -708,27 +728,27 @@ protected:
         FunctionType output_stage;
         output_stage.configure(&a, add_bias ? &b : nullptr, &c, info);
 
-        ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(c.info()->is_resizable());
 
         // Allocate tensors
         a.allocator()->allocate();
         c.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!c.info()->is_resizable());
 
         // Fill tensor
         fill(AccessorType(a), 0);
 
         if(add_bias)
         {
-            ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(b.info()->is_resizable());
 
             // Allocate bias tensor
             b.allocator()->allocate();
 
-            ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
 
             // Fill tensor
             fill(AccessorType(b), 1);
@@ -801,27 +821,27 @@ protected:
         FunctionType output_stage;
         output_stage.configure(&a, add_bias ? &b : nullptr, &c, result_fixedpoint_multiplier, result_shift, min, max);
 
-        ARM_COMPUTE_EXPECT(a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(c.info()->is_resizable());
 
         // Allocate tensors
         a.allocator()->allocate();
         c.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!a.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!c.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!a.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!c.info()->is_resizable());
 
         // Fill tensor
         fill(AccessorType(a), 0);
 
         if(add_bias)
         {
-            ARM_COMPUTE_EXPECT(b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(b.info()->is_resizable());
 
             // Allocate bias tensor
             b.allocator()->allocate();
 
-            ARM_COMPUTE_EXPECT(!b.info()->is_resizable(), framework::LogLevel::ERRORS);
+            ARM_COMPUTE_ASSERT(!b.info()->is_resizable());
 
             // Fill tensor
             fill(AccessorType(b), 1);
@@ -864,7 +884,7 @@ protected:
     SimpleTensor<int16_t> _reference{};
 };
 
-template <typename TensorType, typename AccessorType, typename ReshapeLHSFunctionType, typename ReshapeRHSFunctionType, typename GEMMFunctionType>
+template <typename TensorType, typename AccessorType, typename ReshapeLHSOperatorType, typename ReshapeRHSOperatorType, typename GEMMFunctionType>
 class GEMMLowpMatrixMultiplyReshapedValidationFixture : public framework::Fixture
 {
 public:
@@ -934,15 +954,17 @@ protected:
         // The output tensor will be auto-initialized within the function
 
         // Create and configure function
-        ReshapeLHSFunctionType reshape_lhs;
-        ReshapeRHSFunctionType reshape_rhs;
+        ReshapeLHSOperatorType reshape_lhs;
+        ReshapeRHSOperatorType reshape_rhs;
         GEMMFunctionType       gemm;
-        reshape_lhs.configure(&lhs, &lhs_reshaped, lhs_info);
-        reshape_rhs.configure(&rhs, &rhs_reshaped, rhs_info);
-        gemm.configure(&lhs_reshaped, &rhs_reshaped, &dst, lhs_info, rhs_info, GEMMReshapeInfo(M, N, K));
+        reshape_lhs.configure(lhs.info(), lhs_reshaped.info(), lhs_info);
+        reshape_rhs.configure(rhs.info(), rhs_reshaped.info(), rhs_info);
+        gemm.configure(lhs_reshaped.info(), rhs_reshaped.info(), dst.info(), lhs_info, rhs_info, GEMMReshapeInfo(M, N, K));
 
-        ARM_COMPUTE_EXPECT(lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(rhs.info()->is_resizable());
+
+        add_padding_x({ &lhs, &rhs, &lhs_reshaped, &rhs_reshaped, &dst });
 
         // Allocate tensors
         lhs.allocator()->allocate();
@@ -951,20 +973,23 @@ protected:
         rhs_reshaped.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!lhs_reshaped.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs_reshaped.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!lhs_reshaped.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs_reshaped.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(lhs), 0);
         fill(AccessorType(rhs), 1);
 
         // Compute GEMM
-        reshape_lhs.run();
-        reshape_rhs.run();
-        gemm.run();
+        ITensorPack reshape_lhs_pack = { { ACL_SRC, &lhs }, { ACL_DST, &lhs_reshaped } };
+        reshape_lhs.run(reshape_lhs_pack);
+        ITensorPack reshape_rhs_pack = { { ACL_SRC, &rhs }, { ACL_DST, &rhs_reshaped } };
+        reshape_rhs.run(reshape_rhs_pack);
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs_reshaped }, { ACL_SRC_1, &rhs_reshaped }, { ACL_DST, &dst } });
+        gemm.run(gemm_pack);
 
         return dst;
     }
@@ -1010,7 +1035,7 @@ protected:
     SimpleTensor<int32_t> _reference{};
 };
 
-template <typename TensorType, typename AccessorType, typename ReshapeLHSFunctionType, typename ReshapeRHSFunctionType, typename GEMMFunctionType>
+template <typename TensorType, typename AccessorType, typename ReshapeLHSOperatorType, typename ReshapeRHSOperatorType, typename GEMMFunctionType>
 class GEMMLowpMatrixMultiplyReshaped3DValidationFixture : public framework::Fixture
 {
 public:
@@ -1084,15 +1109,17 @@ protected:
         // The output tensor will be auto-initialized within the function
 
         // Create and configure function
-        ReshapeLHSFunctionType reshape_lhs;
-        ReshapeRHSFunctionType reshape_rhs;
+        ReshapeLHSOperatorType reshape_lhs;
+        ReshapeRHSOperatorType reshape_rhs;
         GEMMFunctionType       gemm;
-        reshape_lhs.configure(&lhs, &lhs_reshaped, lhs_info);
-        reshape_rhs.configure(&rhs, &rhs_reshaped, rhs_info);
-        gemm.configure(&lhs_reshaped, &rhs_reshaped, &dst, lhs_info, rhs_info, GEMMReshapeInfo(M, N, K, 1, 1, m_h));
+        reshape_lhs.configure(lhs.info(), lhs_reshaped.info(), lhs_info);
+        reshape_rhs.configure(rhs.info(), rhs_reshaped.info(), rhs_info);
+        gemm.configure(lhs_reshaped.info(), rhs_reshaped.info(), dst.info(), lhs_info, rhs_info, GEMMReshapeInfo(M, N, K, 1, 1, m_h));
 
-        ARM_COMPUTE_EXPECT(lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(rhs.info()->is_resizable());
+
+        add_padding_x({ &lhs, &rhs, &lhs_reshaped, &rhs_reshaped, &dst });
 
         // Allocate tensors
         lhs.allocator()->allocate();
@@ -1101,20 +1128,23 @@ protected:
         rhs_reshaped.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!lhs_reshaped.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs_reshaped.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!lhs_reshaped.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs_reshaped.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(lhs), 0);
         fill(AccessorType(rhs), 1);
 
         // Compute GEMM
-        reshape_lhs.run();
-        reshape_rhs.run();
-        gemm.run();
+        ITensorPack reshape_lhs_pack = { { ACL_SRC, &lhs }, { ACL_DST, &lhs_reshaped } };
+        reshape_lhs.run(reshape_lhs_pack);
+        ITensorPack reshape_rhs_pack = { { ACL_SRC, &rhs }, { ACL_DST, &rhs_reshaped } };
+        reshape_rhs.run(reshape_rhs_pack);
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs_reshaped }, { ACL_SRC_1, &rhs_reshaped }, { ACL_DST, &dst } });
+        gemm.run(gemm_pack);
 
         return dst;
     }
@@ -1162,7 +1192,7 @@ protected:
     SimpleTensor<int32_t> _reference{};
 };
 
-template <typename TensorType, typename AccessorType, typename ReshapeRHSFunctionType, typename GEMMFunctionType>
+template <typename TensorType, typename AccessorType, typename ReshapeRHSOperatorType, typename GEMMFunctionType>
 class GEMMLowpMatrixMultiplyReshapedOnlyRHSValidationFixture : public framework::Fixture
 {
 public:
@@ -1235,13 +1265,15 @@ protected:
         // The output tensor will be auto-initialized within the function
 
         // Create and configure function
-        ReshapeRHSFunctionType reshape_rhs;
+        ReshapeRHSOperatorType reshape_rhs;
         GEMMFunctionType       gemm;
-        reshape_rhs.configure(&rhs, &rhs_reshaped, rhs_info);
-        gemm.configure(&lhs, &rhs_reshaped, &dst, gemm_info);
+        reshape_rhs.configure(rhs.info(), rhs_reshaped.info(), rhs_info);
+        gemm.configure(lhs.info(), rhs_reshaped.info(), dst.info(), gemm_info);
 
-        ARM_COMPUTE_EXPECT(lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(rhs.info()->is_resizable());
+
+        add_padding_x({ &lhs, &rhs, &rhs_reshaped, &dst });
 
         // Allocate tensors
         lhs.allocator()->allocate();
@@ -1249,18 +1281,20 @@ protected:
         rhs_reshaped.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs_reshaped.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs_reshaped.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(lhs), 0);
         fill(AccessorType(rhs), 1);
 
         // Compute GEMM
-        reshape_rhs.run();
-        gemm.run();
+        ITensorPack reshape_rhs_pack = { { ACL_SRC, &rhs }, { ACL_DST, &rhs_reshaped } };
+        reshape_rhs.run(reshape_rhs_pack);
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs }, { ACL_SRC_1, &rhs_reshaped }, { ACL_DST, &dst } });
+        gemm.run(gemm_pack);
 
         return dst;
     }
@@ -1301,7 +1335,7 @@ protected:
     SimpleTensor<int32_t> _reference{};
 };
 
-template <typename TensorType, typename AccessorType, typename ReshapeRHSFunctionType, typename GEMMFunctionType>
+template <typename TensorType, typename AccessorType, typename ReshapeRHSOperatorType, typename GEMMFunctionType>
 class GEMMLowpMatrixMultiplyReshapedOnlyRHS3DValidationFixture : public framework::Fixture
 {
 public:
@@ -1378,13 +1412,15 @@ protected:
         // The output tensor will be auto-initialized within the function
 
         // Create and configure function
-        ReshapeRHSFunctionType reshape_rhs;
+        ReshapeRHSOperatorType reshape_rhs;
         GEMMFunctionType       gemm;
-        reshape_rhs.configure(&rhs, &rhs_reshaped, rhs_info);
-        gemm.configure(&lhs, &rhs_reshaped, &dst, gemm_info);
+        reshape_rhs.configure(rhs.info(), rhs_reshaped.info(), rhs_info);
+        gemm.configure(lhs.info(), rhs_reshaped.info(), dst.info(), gemm_info);
 
-        ARM_COMPUTE_EXPECT(lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(rhs.info()->is_resizable());
+
+        add_padding_x({ &lhs, &rhs, &rhs_reshaped, &dst });
 
         // Allocate tensors
         lhs.allocator()->allocate();
@@ -1392,18 +1428,20 @@ protected:
         rhs_reshaped.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs_reshaped.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs_reshaped.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(lhs), 0);
         fill(AccessorType(rhs), 1);
 
         // Compute GEMM
-        reshape_rhs.run();
-        gemm.run();
+        ITensorPack reshape_rhs_pack = { { ACL_SRC, &rhs }, { ACL_DST, &rhs_reshaped } };
+        reshape_rhs.run(reshape_rhs_pack);
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs }, { ACL_SRC_1, &rhs_reshaped }, { ACL_DST, &dst } });
+        gemm.run(gemm_pack);
 
         return dst;
     }
@@ -1493,26 +1531,29 @@ protected:
 
         // Create and configure function
         GEMMFunctionType gemm;
-        gemm.configure(&lhs, &rhs, &dst, lhs_info, rhs_info, GEMMReshapeInfo(M, N, K));
+        gemm.configure(lhs.info(), rhs.info(), dst.info(), lhs_info, rhs_info, GEMMReshapeInfo(M, N, K));
 
-        ARM_COMPUTE_EXPECT(lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(rhs.info()->is_resizable());
+
+        add_padding_x({ &lhs, &rhs, &dst });
 
         // Allocate tensors
         lhs.allocator()->allocate();
         rhs.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(lhs), 0);
         fill(AccessorType(rhs), 1);
 
         // Compute GEMM
-        gemm.run();
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs }, { ACL_SRC_1, &rhs }, { ACL_DST, &dst } });
+        gemm.run(gemm_pack);
 
         return dst;
     }
@@ -1588,26 +1629,29 @@ protected:
 
         // Create and configure function
         GEMMFunctionType gemm;
-        gemm.configure(&lhs, &rhs, &dst, lhs_info, rhs_info, GEMMReshapeInfo(M, N, K, 1, 1, m_h));
+        gemm.configure(lhs.info(), rhs.info(), dst.info(), lhs_info, rhs_info, GEMMReshapeInfo(M, N, K, 1, 1, m_h));
 
-        ARM_COMPUTE_EXPECT(lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(rhs.info()->is_resizable());
+
+        add_padding_x({ &lhs, &rhs, &dst });
 
         // Allocate tensors
         lhs.allocator()->allocate();
         rhs.allocator()->allocate();
         dst.allocator()->allocate();
 
-        ARM_COMPUTE_EXPECT(!lhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!rhs.info()->is_resizable(), framework::LogLevel::ERRORS);
-        ARM_COMPUTE_EXPECT(!dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+        ARM_COMPUTE_ASSERT(!lhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!rhs.info()->is_resizable());
+        ARM_COMPUTE_ASSERT(!dst.info()->is_resizable());
 
         // Fill tensors
         fill(AccessorType(lhs), 0);
         fill(AccessorType(rhs), 1);
 
         // Compute GEMM
-        gemm.run();
+        ITensorPack gemm_pack({ { ACL_SRC_0, &lhs }, { ACL_SRC_1, &rhs }, { ACL_DST, &dst } });
+        gemm.run(gemm_pack);
 
         return dst;
     }

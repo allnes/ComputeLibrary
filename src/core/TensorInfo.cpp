@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,17 +24,18 @@
 #include "arm_compute/core/TensorInfo.h"
 
 #include "arm_compute/core/Error.h"
-#include "arm_compute/core/HOGInfo.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Validate.h"
-#include "support/MemorySupport.h"
+#include "src/core/helpers/Utils.h"
 
-using namespace arm_compute;
+#include <memory>
 
+namespace arm_compute
+{
 TensorInfo::TensorInfo()
-    : _total_size(0), _offset_first_element_in_bytes(0), _strides_in_bytes(), _num_channels(0), _tensor_shape(), _data_type(DataType::UNKNOWN), _format(Format::UNKNOWN), _is_resizable{ true }, _is_dynamic{ false },
-      _valid_region{ Coordinates(), _tensor_shape }, _padding{ 0 }, _quantization_info(), _data_layout(DataLayout::NCHW)
+    : _total_size(0), _offset_first_element_in_bytes(0), _strides_in_bytes(), _num_channels(0), _tensor_shape(), _dims_state(), _data_type(DataType::UNKNOWN), _format(Format::UNKNOWN), _is_resizable{ true },
+      _valid_region{ Coordinates(), _tensor_shape }, _padding{ 0 }, _quantization_info(), _data_layout(DataLayout::NCHW), _are_values_constant(true)
 {
 }
 
@@ -46,14 +47,15 @@ TensorInfo::TensorInfo(const ITensorInfo &info)
     _strides_in_bytes              = info.strides_in_bytes();
     _num_channels                  = info.num_channels();
     _tensor_shape                  = info.tensor_shape();
+    _dims_state                    = info.tensor_dims_state();
     _data_type                     = info.data_type();
     _format                        = info.format();
     _is_resizable                  = info.is_resizable();
-    _is_dynamic                    = info.is_dynamic();
     _valid_region                  = info.valid_region();
     _padding                       = info.padding();
     _quantization_info             = info.quantization_info();
     _data_layout                   = info.data_layout();
+    _are_values_constant           = info.are_values_constant();
 }
 
 TensorInfo::TensorInfo(Format format)
@@ -96,12 +98,6 @@ TensorInfo::TensorInfo(const TensorShape &tensor_shape, size_t num_channels, Dat
 {
     init(tensor_shape, num_channels, data_type);
     _data_layout = data_layout;
-}
-
-TensorInfo::TensorInfo(const HOGInfo &hog_info, unsigned int width, unsigned int height)
-    : TensorInfo()
-{
-    init(hog_info, width, height);
 }
 
 void TensorInfo::init(Format format)
@@ -164,20 +160,6 @@ void TensorInfo::init(const TensorShape &tensor_shape, size_t num_channels, Data
     _valid_region = ValidRegion{ Coordinates(), _tensor_shape };
 }
 
-void TensorInfo::init(const HOGInfo &hog_info, unsigned int width, unsigned int height)
-{
-    // Number of cells for each block
-    const Size2D num_cells_per_block = hog_info.num_cells_per_block();
-
-    // Tensor Size = (Number of horizontal block positions) * (Number of vertical block positions)
-    const Size2D num_block_positions_per_img = hog_info.num_block_positions_per_image(Size2D(width, height));
-
-    // Number of tensor channels = (Number of cells per block) * (Number of bins per cell)
-    const size_t num_channels = num_cells_per_block.area() * hog_info.num_bins();
-
-    init(TensorShape(num_block_positions_per_img.width, num_block_positions_per_img.height), num_channels, DataType::F32);
-}
-
 size_t TensorInfo::init_auto_padding(const TensorShape &tensor_shape, Format format)
 {
     const size_t   num_channels = num_channels_from_format(format);
@@ -203,20 +185,6 @@ size_t TensorInfo::init_auto_padding(const TensorShape &tensor_shape, size_t num
     auto_padding();
 
     return _total_size;
-}
-
-size_t TensorInfo::init_auto_padding(const HOGInfo &hog_info, unsigned int width, unsigned int height)
-{
-    // Number of cells for each block
-    const Size2D num_cells_per_block = hog_info.num_cells_per_block();
-
-    // Tensor Size = (Number of horizontal block positions) * (Number of vertical block positions)
-    const Size2D num_block_positions_per_img = hog_info.num_block_positions_per_image(Size2D(width, height));
-
-    // Number of tensor channels = (Number of cells per block) * (Number of bins per cell)
-    const size_t num_channels = num_cells_per_block.area() * hog_info.num_bins();
-
-    return init_auto_padding(TensorShape(num_block_positions_per_img.width, num_block_positions_per_img.height), num_channels, DataType::F32);
 }
 
 bool TensorInfo::auto_padding()
@@ -268,7 +236,7 @@ std::tuple<Strides, size_t, size_t> TensorInfo::calculate_padding_requirements(c
 
             const unsigned int idx_last_dimension = _tensor_shape.num_dimensions() - 1;
 
-            required_total_size = _tensor_shape[idx_last_dimension] * required_strides[idx_last_dimension];
+            required_total_size = static_cast<size_t>(_tensor_shape[idx_last_dimension]) * required_strides[idx_last_dimension];
             break;
         }
     }
@@ -313,7 +281,7 @@ bool TensorInfo::extend_padding(const PaddingSize &padding)
 
 std::unique_ptr<ITensorInfo> TensorInfo::clone() const
 {
-    return support::cpp14::make_unique<TensorInfo>(*this);
+    return std::make_unique<TensorInfo>(*this);
 }
 
 ITensorInfo &TensorInfo::set_data_type(DataType data_type)
@@ -360,12 +328,18 @@ ITensorInfo &TensorInfo::set_tensor_shape(const TensorShape &shape)
     else
     {
         const unsigned int idx_last_dimension = _tensor_shape.num_dimensions() - 1;
-        _total_size                           = _tensor_shape[idx_last_dimension] * _strides_in_bytes[idx_last_dimension];
+        _total_size                           = static_cast<size_t>(_tensor_shape[idx_last_dimension]) * _strides_in_bytes[idx_last_dimension];
     }
 
     std::tie(_strides_in_bytes, _offset_first_element_in_bytes, _total_size) = calculate_padding_requirements(_padding);
 
     _valid_region = ValidRegion{ Coordinates(), _tensor_shape };
+    return *this;
+}
+
+ITensorInfo &TensorInfo::set_tensor_dims_state(const TensorDimsState &state)
+{
+    _dims_state = state;
     return *this;
 }
 
@@ -404,3 +378,4 @@ int32_t TensorInfo::offset_element_in_bytes(const Coordinates &pos) const
 
     return offset;
 }
+} // namespace arm_compute

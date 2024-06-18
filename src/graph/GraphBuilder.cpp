@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -137,6 +137,12 @@ NodeID GraphBuilder::add_activation_node(Graph &g, NodeParams params, NodeIdxPai
                                          const QuantizationInfo &out_quant_info)
 {
     return create_simple_single_input_output_node<ActivationLayerNode>(g, params, input, act_info, out_quant_info);
+}
+
+NodeID GraphBuilder::add_arg_min_max_node(Graph &g, NodeParams params, NodeIdxPair input, ReductionOperation op, unsigned int axis,
+                                          DataType out_data_type, const QuantizationInfo &out_quant_info)
+{
+    return create_simple_single_input_output_node<ArgMinMaxLayerNode>(g, params, input, op, axis, out_data_type, out_quant_info);
 }
 
 NodeID GraphBuilder::add_batch_normalization_node(Graph &g, NodeParams params, NodeIdxPair input, float epsilon,
@@ -376,6 +382,12 @@ NodeID GraphBuilder::add_depthwise_convolution_node(Graph &g, NodeParams params,
 
     return conv_nid;
 }
+
+NodeID GraphBuilder::add_depth_to_space_node(Graph &g, NodeParams params, NodeIdxPair input, int32_t block_shape)
+{
+    return create_simple_single_input_output_node<DepthToSpaceLayerNode>(g, params, input, block_shape);
+}
+
 NodeID GraphBuilder::add_dequantization_node(Graph &g, NodeParams params, NodeIdxPair input)
 {
     return create_simple_single_input_output_node<DequantizationLayerNode>(g, params, input);
@@ -455,7 +467,7 @@ NodeID GraphBuilder::add_flatten_node(Graph &g, NodeParams params, NodeIdxPair i
 
 NodeID GraphBuilder::add_fully_connected_layer(Graph &g, NodeParams params, NodeIdxPair input, unsigned int num_outputs,
                                                NodeID weights_nid, NodeID bias_nid,
-                                               const FullyConnectedLayerInfo fc_info, const QuantizationInfo &out_quant_info)
+                                               const FullyConnectedLayerInfo fc_info, const QuantizationInfo &out_quant_info, FastMathHint fast_math_hint)
 {
     check_nodeidx_pair(input, g);
     ARM_COMPUTE_ERROR_ON(num_outputs == 0);
@@ -467,7 +479,7 @@ NodeID GraphBuilder::add_fully_connected_layer(Graph &g, NodeParams params, Node
     const TensorDescriptor input_tensor_desc = get_tensor_descriptor(g, g.node(input.node_id)->outputs()[0]);
 
     // Create fully connected node and connect
-    NodeID fc_nid = g.add_node<FullyConnectedLayerNode>(num_outputs, out_quant_info, fc_info);
+    NodeID fc_nid = g.add_node<FullyConnectedLayerNode>(num_outputs, out_quant_info, fc_info, fast_math_hint);
     g.add_connection(input.node_id, input.index, fc_nid, 0);
     g.add_connection(weights_nid, 0, fc_nid, 1);
     if(has_bias)
@@ -483,7 +495,7 @@ NodeID GraphBuilder::add_fully_connected_layer(Graph &g, NodeParams params, Node
 NodeID GraphBuilder::add_fully_connected_layer(Graph &g, NodeParams params, NodeIdxPair input, unsigned int num_outputs,
                                                ITensorAccessorUPtr weights_accessor, ITensorAccessorUPtr bias_accessor,
                                                const FullyConnectedLayerInfo fc_info,
-                                               const QuantizationInfo &weights_quant_info, const QuantizationInfo &out_quant_info)
+                                               const QuantizationInfo &weights_quant_info, const QuantizationInfo &out_quant_info, FastMathHint fast_math_hint)
 {
     check_nodeidx_pair(input, g);
     ARM_COMPUTE_ERROR_ON(num_outputs == 0);
@@ -511,7 +523,7 @@ NodeID GraphBuilder::add_fully_connected_layer(Graph &g, NodeParams params, Node
     }
 
     // Create fully connected node and connect
-    NodeID fc_nid = g.add_node<FullyConnectedLayerNode>(num_outputs, out_quant_info, fc_info);
+    NodeID fc_nid = g.add_node<FullyConnectedLayerNode>(num_outputs, out_quant_info, fc_info, fast_math_hint);
     g.add_connection(input.node_id, input.index, fc_nid, 0);
     g.add_connection(w_nid, 0, fc_nid, 1);
     if(has_bias)
@@ -538,6 +550,11 @@ NodeID GraphBuilder::add_generate_proposals_node(Graph &g, NodeParams params, No
 
     set_node_params(g, nid, params);
     return nid;
+}
+
+NodeID GraphBuilder::add_l2_normalize_node(Graph &g, NodeParams params, NodeIdxPair input, int axis, float epsilon)
+{
+    return create_simple_single_input_output_node<L2NormalizeLayerNode>(g, params, input, axis, epsilon);
 }
 
 NodeID GraphBuilder::add_normalization_node(Graph &g, NodeParams params, NodeIdxPair input, NormalizationLayerInfo norm_info)
@@ -625,6 +642,11 @@ NodeID GraphBuilder::add_quantization_node(Graph &g, NodeParams params, NodeIdxP
     return create_simple_single_input_output_node<QuantizationLayerNode>(g, params, input, out_quant_info);
 }
 
+NodeID GraphBuilder::add_reduction_operation_node(Graph &g, NodeParams params, NodeIdxPair input, ReductionOperation op, int axis, bool keep_dims)
+{
+    return create_simple_single_input_output_node<ReductionLayerNode>(g, params, input, op, axis, keep_dims);
+}
+
 NodeID GraphBuilder::add_reorg_node(Graph &g, NodeParams params, NodeIdxPair input, int stride)
 {
     return create_simple_single_input_output_node<ReorgLayerNode>(g, params, input, stride);
@@ -700,19 +722,60 @@ NodeID GraphBuilder::add_split_node(Graph &g, NodeParams params, NodeIdxPair inp
     return create_simple_single_input_output_node<SplitLayerNode>(g, params, input, num_splits, axis);
 }
 
+NodeID GraphBuilder::add_strided_slice_node(Graph &g, NodeParams params, NodeIdxPair input, Coordinates &starts, Coordinates &ends, BiStrides &strides, StridedSliceLayerInfo info)
+{
+    return create_simple_single_input_output_node<StridedSliceLayerNode>(g, params, input, starts, ends, strides, info);
+}
+
 NodeID GraphBuilder::add_stack_node(Graph &g, NodeParams params, const std::vector<NodeIdxPair> &inputs, int axis)
 {
     return create_simple_multiple_input_single_output_node<StackLayerNode>(g, params, inputs, inputs.size(), axis);
 }
 
-NodeID GraphBuilder::add_upsample_node(Graph &g, NodeParams params, NodeIdxPair input, Size2D info, InterpolationPolicy upsampling_policy)
+NodeID GraphBuilder::add_yolo_node(Graph &g, NodeParams params, NodeIdxPair input, ActivationLayerInfo act_info)
 {
-    return create_simple_single_input_output_node<UpsampleLayerNode>(g, params, input, info, upsampling_policy);
-}
+    check_nodeidx_pair(input, g);
 
-NodeID GraphBuilder::add_yolo_node(Graph &g, NodeParams params, NodeIdxPair input, ActivationLayerInfo act_info, int32_t num_classes)
-{
-    return create_simple_single_input_output_node<YOLOLayerNode>(g, params, input, act_info, num_classes);
+    // Get input tensor descriptor
+    const TensorDescriptor input_tensor_desc = get_tensor_descriptor(g, g.node(input.node_id)->outputs()[0]);
+    const bool             is_nhwc           = input_tensor_desc.layout == DataLayout::NHWC;
+
+    // Box format: [Objectness:1][Box:4][Classes:N]
+
+    // Activate objectness and front part of the box
+    const Coordinates box_start(0, 0, 0);
+    const Coordinates box_end = is_nhwc ? Coordinates(3, -1, -1) : Coordinates(-1, -1, 3);
+    NodeID            box     = g.add_node<SliceLayerNode>(box_start, box_end);
+    NodeID            act_box = g.add_node<ActivationLayerNode>(act_info);
+    set_node_params(g, box, params);
+    set_node_params(g, act_box, params);
+    g.add_connection(input.node_id, input.index, box, 0);
+    g.add_connection(box, 0, act_box, 0);
+
+    // Immutable part
+    const Coordinates imm_start = is_nhwc ? Coordinates(3, 0, 0) : Coordinates(0, 0, 3);
+    const Coordinates imm_end   = is_nhwc ? Coordinates(5, -1, -1) : Coordinates(-1, -1, 5);
+    NodeID            imm       = g.add_node<SliceLayerNode>(imm_start, imm_end);
+    set_node_params(g, imm, params);
+    g.add_connection(input.node_id, input.index, imm, 0);
+
+    // Activation classes and end part of box
+    const Coordinates cls_start = is_nhwc ? Coordinates(5, 0, 0) : Coordinates(0, 0, 5);
+    const Coordinates cls_end   = Coordinates(-1, -1, -1);
+    NodeID            cls       = g.add_node<SliceLayerNode>(cls_start, cls_end);
+    NodeID            cls_act   = g.add_node<ActivationLayerNode>(act_info);
+    set_node_params(g, cls, params);
+    set_node_params(g, cls_act, params);
+    g.add_connection(input.node_id, input.index, cls, 0);
+    g.add_connection(cls, 0, cls_act, 0);
+
+    NodeID concat = g.add_node<ConcatenateLayerNode>(3, descriptors::ConcatLayerDescriptor(DataLayoutDimension::CHANNEL));
+    set_node_params(g, concat, params);
+    g.add_connection(act_box, 0, concat, 0);
+    g.add_connection(imm, 0, concat, 1);
+    g.add_connection(cls_act, 0, concat, 2);
+
+    return concat;
 }
 } // namespace graph
 } // namespace arm_compute

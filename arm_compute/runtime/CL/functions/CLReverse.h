@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,17 +24,28 @@
 #ifndef ARM_COMPUTE_CLREVERSE_H
 #define ARM_COMPUTE_CLREVERSE_H
 
+#include "arm_compute/core/Error.h"
 #include "arm_compute/runtime/CL/ICLSimpleFunction.h"
 
 namespace arm_compute
 {
+class CLCompileContext;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to run @ref CLReverseKernel */
 class CLReverse : public ICLSimpleFunction
 {
 public:
     /** Initialize the function
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src0           |src1           |dst            |
+     * |:--------------|:--------------|:--------------|
+     * |All            |U32            |All            |
      *
      * @param[in]  input  Input tensor. Data types supported: All.
      * @param[out] output Output tensor. Data type supported: Same as @p input

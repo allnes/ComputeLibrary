@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -41,7 +41,7 @@
 #if defined(__GNUG__) && __GNUG__ >= 8
 #pragma GCC diagnostic ignored "-Wcatch-value"
 #endif // defined(__GNUG__) && __GNUG__ >= 8
-#include <CL/cl2.hpp>
+#include <CL/opencl.hpp> // include new hpp header instead of cl2.hpp
 #pragma GCC diagnostic pop
 
 namespace cl
@@ -92,6 +92,7 @@ public:
     DECLARE_FUNCTION_PTR(clCreateContext);
     DECLARE_FUNCTION_PTR(clCreateContextFromType);
     DECLARE_FUNCTION_PTR(clCreateCommandQueue);
+    DECLARE_FUNCTION_PTR(clCreateCommandQueueWithProperties);
     DECLARE_FUNCTION_PTR(clGetContextInfo);
     DECLARE_FUNCTION_PTR(clBuildProgram);
     DECLARE_FUNCTION_PTR(clEnqueueNDRangeKernel);
@@ -123,6 +124,7 @@ public:
     DECLARE_FUNCTION_PTR(clGetDeviceIDs);
     DECLARE_FUNCTION_PTR(clGetMemObjectInfo);
     DECLARE_FUNCTION_PTR(clRetainEvent);
+    DECLARE_FUNCTION_PTR(clGetPlatformInfo);
     DECLARE_FUNCTION_PTR(clGetPlatformIDs);
     DECLARE_FUNCTION_PTR(clGetKernelWorkGroupInfo);
     DECLARE_FUNCTION_PTR(clGetCommandQueueInfo);
@@ -135,6 +137,7 @@ public:
     DECLARE_FUNCTION_PTR(clEnqueueMarker);
     DECLARE_FUNCTION_PTR(clWaitForEvents);
     DECLARE_FUNCTION_PTR(clCreateImage);
+    DECLARE_FUNCTION_PTR(clSetKernelExecInfo);
 
     // Third-party extensions
     DECLARE_FUNCTION_PTR(clImportMemoryARM);

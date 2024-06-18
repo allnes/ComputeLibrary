@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,11 +24,10 @@
 #ifndef ARM_COMPUTE_NERNNLAYER_H
 #define ARM_COMPUTE_NERNNLAYER_H
 
-#include "arm_compute/core/NEON/kernels/NECopyKernel.h"
-
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/NEON/functions/NEActivationLayer.h"
 #include "arm_compute/runtime/NEON/functions/NEArithmeticAddition.h"
+#include "arm_compute/runtime/NEON/functions/NECopy.h"
 #include "arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h"
 #include "arm_compute/runtime/NEON/functions/NEGEMM.h"
 
@@ -45,13 +44,25 @@ public:
     NERNNLayer(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
     /** Prevent instances of this class from being copied (As this class contains pointers) */
     NERNNLayer(const NERNNLayer &) = delete;
-    /** Default move constructor */
-    NERNNLayer(NERNNLayer &&) = default;
+    /** Prevent instances of this class from being moved (As this class contains pointers) */
+    NERNNLayer(NERNNLayer &&) = delete;
     /** Prevent instances of this class from being copied (As this class contains pointers) */
     NERNNLayer &operator=(const NERNNLayer &) = delete;
-    /** Default move assignment operator */
-    NERNNLayer &operator=(NERNNLayer &&) = default;
+    /** Prevent instances of this class from being moved (As this class contains pointers) */
+    NERNNLayer &operator=(NERNNLayer &&) = delete;
+    /** Default destructor */
+    ~NERNNLayer();
     /** Initialize the function
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0   |src1   |src2   |src3   |dst0   |dst1   |
+     * |:------|:------|:------|:------|:------|:------|
+     * |F16    |F16    |F16    |F16    |F16    |F16    |
+     * |F32    |F32    |F32    |F32    |F32    |F32    |
      *
      * @param[in]     input             Input is a 2-D tensor of shape [input_size, batch_size]. Data types supported: F16/F32
      * @param[in]     weights           Weights tensor of shape [input_size, num_units] that multiplies the input. Data types supported: Same as @p input
@@ -87,7 +98,7 @@ private:
     NEArithmeticAddition  _add_f;
     NEActivationLayer     _activation;
     NEFullyConnectedLayer _fully_connected;
-    NECopyKernel          _copy_kernel;
+    NECopy                _copy_f;
     Tensor                _fully_connected_out;
     Tensor                _gemm_output;
     Tensor                _add_output;

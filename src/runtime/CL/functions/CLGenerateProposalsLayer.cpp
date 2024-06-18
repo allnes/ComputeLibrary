@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,21 +25,29 @@
 
 #include "arm_compute/core/CL/ICLTensor.h"
 #include "arm_compute/core/Types.h"
+#include "arm_compute/runtime/CL/functions/CLDequantizationLayer.h"
+#include "arm_compute/runtime/CL/functions/CLQuantizationLayer.h"
+#include "src/core/CL/kernels/CLBoundingBoxTransformKernel.h"
+#include "src/core/CL/kernels/CLGenerateProposalsLayerKernel.h"
+#include "src/core/CL/kernels/CLPadLayerKernel.h"
+#include "src/core/helpers/AutoConfiguration.h"
+
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
 CLGenerateProposalsLayer::CLGenerateProposalsLayer(std::shared_ptr<IMemoryManager> memory_manager)
     : _memory_group(memory_manager),
-      _permute_deltas_kernel(),
+      _permute_deltas(),
       _flatten_deltas(),
-      _permute_scores_kernel(),
+      _permute_scores(),
       _flatten_scores(),
-      _compute_anchors_kernel(),
-      _bounding_box_kernel(),
-      _pad_kernel(),
-      _dequantize_anchors(),
-      _dequantize_deltas(),
-      _quantize_all_proposals(),
+      _compute_anchors_kernel(std::make_unique<CLComputeAllAnchorsKernel>()),
+      _bounding_box_kernel(std::make_unique<CLBoundingBoxTransformKernel>()),
+      _pad_kernel(std::make_unique<CLPadLayerKernel>()),
+      _dequantize_anchors(std::make_unique<CLDequantizationLayer>()),
+      _dequantize_deltas(std::make_unique<CLDequantizationLayer>()),
+      _quantize_all_proposals(std::make_unique<CLQuantizationLayer>()),
       _cpp_nms(memory_manager),
       _is_nhwc(false),
       _is_qasymm8(false),
@@ -61,6 +69,8 @@ CLGenerateProposalsLayer::CLGenerateProposalsLayer(std::shared_ptr<IMemoryManage
 {
 }
 
+CLGenerateProposalsLayer::~CLGenerateProposalsLayer() = default;
+
 void CLGenerateProposalsLayer::configure(const ICLTensor *scores, const ICLTensor *deltas, const ICLTensor *anchors, ICLTensor *proposals, ICLTensor *scores_out, ICLTensor *num_valid_proposals,
                                          const GenerateProposalsInfo &info)
 {
@@ -73,6 +83,7 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(scores, deltas, anchors, proposals, scores_out, num_valid_proposals);
     ARM_COMPUTE_ERROR_THROW_ON(CLGenerateProposalsLayer::validate(scores->info(), deltas->info(), anchors->info(), proposals->info(), scores_out->info(), num_valid_proposals->info(), info));
+    ARM_COMPUTE_LOG_PARAMS(scores, deltas, anchors, proposals, scores_out, num_valid_proposals, info);
 
     _is_nhwc                        = scores->info()->data_layout() == DataLayout::NHWC;
     const DataType scores_data_type = scores->info()->data_type();
@@ -91,7 +102,7 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
 
     // Compute all the anchors
     _memory_group.manage(&_all_anchors);
-    _compute_anchors_kernel.configure(compile_context, anchors, &_all_anchors, ComputeAnchorsInfo(feat_width, feat_height, info.spatial_scale()));
+    _compute_anchors_kernel->configure(compile_context, anchors, &_all_anchors, ComputeAnchorsInfo(feat_width, feat_height, info.spatial_scale()));
 
     const TensorShape flatten_shape_deltas(values_per_roi, total_num_anchors);
     _deltas_flattened.allocator()->init(TensorInfo(flatten_shape_deltas, 1, scores_data_type, deltas->info()->quantization_info()));
@@ -101,7 +112,7 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
     if(!_is_nhwc)
     {
         _memory_group.manage(&_deltas_permuted);
-        _permute_deltas_kernel.configure(compile_context, deltas, &_deltas_permuted, PermutationVector{ 2, 0, 1 });
+        _permute_deltas.configure(compile_context, deltas, &_deltas_permuted, PermutationVector{ 2, 0, 1 });
         _flatten_deltas.configure(compile_context, &_deltas_permuted, &_deltas_flattened);
         _deltas_permuted.allocator()->allocate();
     }
@@ -118,7 +129,7 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
     if(!_is_nhwc)
     {
         _memory_group.manage(&_scores_permuted);
-        _permute_scores_kernel.configure(compile_context, scores, &_scores_permuted, PermutationVector{ 2, 0, 1 });
+        _permute_scores.configure(compile_context, scores, &_scores_permuted, PermutationVector{ 2, 0, 1 });
         _flatten_scores.configure(compile_context, &_scores_permuted, &_scores_flattened);
         _scores_permuted.allocator()->allocate();
     }
@@ -136,18 +147,18 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
         _memory_group.manage(&_all_anchors_f32);
         _memory_group.manage(&_deltas_flattened_f32);
         // Dequantize anchors to float
-        _dequantize_anchors.configure(compile_context, &_all_anchors, &_all_anchors_f32);
+        _dequantize_anchors->configure(compile_context, &_all_anchors, &_all_anchors_f32);
         _all_anchors.allocator()->allocate();
         anchors_to_use = &_all_anchors_f32;
         // Dequantize deltas to float
-        _dequantize_deltas.configure(compile_context, &_deltas_flattened, &_deltas_flattened_f32);
+        _dequantize_deltas->configure(compile_context, &_deltas_flattened, &_deltas_flattened_f32);
         _deltas_flattened.allocator()->allocate();
         deltas_to_use = &_deltas_flattened_f32;
     }
     // Bounding box transform
     _memory_group.manage(&_all_proposals);
     BoundingBoxTransformInfo bbox_info(info.im_width(), info.im_height(), 1.f);
-    _bounding_box_kernel.configure(compile_context, anchors_to_use, &_all_proposals, deltas_to_use, bbox_info);
+    _bounding_box_kernel->configure(compile_context, anchors_to_use, &_all_proposals, deltas_to_use, bbox_info);
     deltas_to_use->allocator()->allocate();
     anchors_to_use->allocator()->allocate();
 
@@ -157,7 +168,7 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
         _memory_group.manage(&_all_proposals_quantized);
         // Requantize all_proposals to QASYMM16 with 0.125 scale and 0 offset
         _all_proposals_quantized.allocator()->init(TensorInfo(_all_proposals.info()->tensor_shape(), 1, DataType::QASYMM16, QuantizationInfo(0.125f, 0)));
-        _quantize_all_proposals.configure(compile_context, &_all_proposals, &_all_proposals_quantized);
+        _quantize_all_proposals->configure(compile_context, &_all_proposals, &_all_proposals_quantized);
         _all_proposals.allocator()->allocate();
         _all_proposals_to_use = &_all_proposals_quantized;
     }
@@ -192,7 +203,7 @@ void CLGenerateProposalsLayer::configure(const CLCompileContext &compile_context
     _scores_flattened.allocator()->allocate();
 
     // Add the first column that represents the batch id. This will be all zeros, as we don't support multiple images
-    _pad_kernel.configure(compile_context, &_proposals_4_roi_values, proposals, PaddingList{ { 1, 0 } });
+    _pad_kernel->configure(compile_context, &_proposals_4_roi_values, proposals, PaddingList{ { 1, 0 } });
     _proposals_4_roi_values.allocator()->allocate();
 }
 
@@ -235,8 +246,8 @@ Status CLGenerateProposalsLayer::validate(const ITensorInfo *scores, const ITens
     }
     else
     {
-        ARM_COMPUTE_RETURN_ON_ERROR(CLPermuteKernel::validate(deltas, &deltas_permuted_info, PermutationVector{ 2, 0, 1 }));
-        ARM_COMPUTE_RETURN_ON_ERROR(CLPermuteKernel::validate(scores, &scores_permuted_info, PermutationVector{ 2, 0, 1 }));
+        ARM_COMPUTE_RETURN_ON_ERROR(CLPermute::validate(deltas, &deltas_permuted_info, PermutationVector{ 2, 0, 1 }));
+        ARM_COMPUTE_RETURN_ON_ERROR(CLPermute::validate(scores, &scores_permuted_info, PermutationVector{ 2, 0, 1 }));
     }
 
     TensorInfo deltas_flattened_info(deltas->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true));
@@ -253,16 +264,16 @@ Status CLGenerateProposalsLayer::validate(const ITensorInfo *scores, const ITens
     if(is_qasymm8)
     {
         TensorInfo all_anchors_f32_info(anchors->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true).set_data_type(DataType::F32));
-        ARM_COMPUTE_RETURN_ON_ERROR(CLDequantizationLayerKernel::validate(&all_anchors_info, &all_anchors_f32_info));
+        ARM_COMPUTE_RETURN_ON_ERROR(CLDequantizationLayer::validate(&all_anchors_info, &all_anchors_f32_info));
 
         TensorInfo deltas_flattened_f32_info(deltas->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true).set_data_type(DataType::F32));
-        ARM_COMPUTE_RETURN_ON_ERROR(CLDequantizationLayerKernel::validate(&deltas_flattened_info, &deltas_flattened_f32_info));
+        ARM_COMPUTE_RETURN_ON_ERROR(CLDequantizationLayer::validate(&deltas_flattened_info, &deltas_flattened_f32_info));
 
         TensorInfo proposals_4_roi_values_f32(deltas->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true).set_data_type(DataType::F32));
         ARM_COMPUTE_RETURN_ON_ERROR(CLBoundingBoxTransformKernel::validate(&all_anchors_f32_info, &proposals_4_roi_values_f32, &deltas_flattened_f32_info,
                                                                            BoundingBoxTransformInfo(info.im_width(), info.im_height(), 1.f)));
 
-        ARM_COMPUTE_RETURN_ON_ERROR(CLQuantizationLayerKernel::validate(&proposals_4_roi_values_f32, &proposals_4_roi_values_quantized));
+        ARM_COMPUTE_RETURN_ON_ERROR(CLQuantizationLayer::validate(&proposals_4_roi_values_f32, &proposals_4_roi_values_quantized));
         proposals_4_roi_values_to_use = &proposals_4_roi_values_quantized;
     }
     else
@@ -342,34 +353,34 @@ void CLGenerateProposalsLayer::run()
     MemoryGroupResourceScope scope_mg(_memory_group);
 
     // Compute all the anchors
-    CLScheduler::get().enqueue(_compute_anchors_kernel, false);
+    CLScheduler::get().enqueue(*_compute_anchors_kernel, false);
 
     // Transpose and reshape the inputs
     if(!_is_nhwc)
     {
-        CLScheduler::get().enqueue(_permute_deltas_kernel, false);
-        CLScheduler::get().enqueue(_permute_scores_kernel, false);
+        _permute_deltas.run();
+        _permute_scores.run();
     }
     _flatten_deltas.run();
     _flatten_scores.run();
 
     if(_is_qasymm8)
     {
-        CLScheduler::get().enqueue(_dequantize_anchors, false);
-        CLScheduler::get().enqueue(_dequantize_deltas, false);
+        _dequantize_anchors->run();
+        _dequantize_deltas->run();
     }
 
     // Build the boxes
-    CLScheduler::get().enqueue(_bounding_box_kernel, false);
+    CLScheduler::get().enqueue(*_bounding_box_kernel, false);
 
     if(_is_qasymm8)
     {
-        CLScheduler::get().enqueue(_quantize_all_proposals, false);
+        _quantize_all_proposals->run();
     }
 
     // Non maxima suppression
     run_cpp_nms_kernel();
     // Add dummy batch indexes
-    CLScheduler::get().enqueue(_pad_kernel, true);
+    CLScheduler::get().enqueue(*_pad_kernel, true);
 }
 } // namespace arm_compute

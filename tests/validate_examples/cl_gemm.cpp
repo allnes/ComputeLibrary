@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,10 +26,25 @@
 #endif /* ARM_COMPUTE_CL */
 
 #include "arm_compute/core/Types.h"
+#include "arm_compute/core/Utils.h"
 #include "arm_compute/core/utils/quantization/AsymmHelpers.h"
-#include "arm_compute/runtime/CL/CLFunctions.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
-
+#include "arm_compute/runtime/CL/functions/CLGEMM.h"
+#include "arm_compute/runtime/CL/functions/CLGEMMLowpMatrixMultiplyCore.h"
+#include "arm_compute/runtime/CL/functions/CLGEMMLowpOutputStage.h"
+#include "src/core/CL/kernels/CLDepthConvertLayerKernel.h"
+#include "src/core/CL/kernels/CLFillBorderKernel.h"
+#include "src/core/CL/kernels/CLGEMMLowpMatrixMultiplyNativeKernel.h"
+#include "src/core/CL/kernels/CLGEMMLowpMatrixMultiplyReshapedOnlyRHSKernel.h"
+#include "src/core/CL/kernels/CLGEMMLowpOffsetContributionKernel.h"
+#include "src/core/CL/kernels/CLGEMMLowpOffsetContributionOutputStageKernel.h"
+#include "src/core/CL/kernels/CLGEMMLowpReductionKernel.h"
+#include "src/core/CL/kernels/CLGEMMMatrixMultiplyReshapedKernel.h"
+#include "src/core/CL/kernels/CLGEMMMatrixMultiplyReshapedOnlyRHSKernel.h"
+#include "src/core/CL/kernels/CLGEMMReshapeLHSMatrixKernel.h"
+#include "src/core/CL/kernels/CLGEMMReshapeRHSMatrixKernel.h"
+#include "src/core/CL/kernels/CLIm2ColKernel.h"
+#include "src/core/CL/kernels/CLWeightsReshapeKernel.h"
 #include "tests/AssetsLibrary.h"
 #include "tests/CL/CLAccessor.h"
 #include "tests/Globals.h"
@@ -59,40 +74,6 @@ RelativeTolerance<float>            tolerance_f32(0.001f);      /**< F32 Toleran
 RelativeTolerance<half_float::half> tolerance_f16(half(0.2));   /**< F16 Tolerance value for comparing reference's output against implementation's output for floating point data types */
 constexpr float                     tolerance_num_f16 = 0.02f;  /**< F16 Tolerance number */
 
-namespace arm_compute
-{
-DataType data_type_from_name(const std::string &name)
-{
-    static const std::map<std::string, DataType> data_types =
-    {
-        { "f16", DataType::F16 },
-        { "f32", DataType::F32 },
-        { "qasymm8", DataType::QASYMM8 },
-    };
-
-#ifndef ARM_COMPUTE_EXCEPTIONS_DISABLED
-    try
-    {
-#endif /* ARM_COMPUTE_EXCEPTIONS_DISABLED */
-        return data_types.at(utility::tolower(name));
-
-#ifndef ARM_COMPUTE_EXCEPTIONS_DISABLED
-    }
-    catch(const std::out_of_range &)
-    {
-        throw std::invalid_argument(name);
-    }
-#endif /* ARM_COMPUTE_EXCEPTIONS_DISABLED */
-}
-
-inline ::std::istream &operator>>(::std::istream &stream, DataType &data_type)
-{
-    std::string value;
-    stream >> value;
-    data_type = data_type_from_name(value);
-    return stream;
-}
-} // namespace arm_compute
 namespace
 {
 class GEMMCommandLineOptions final
@@ -363,9 +344,14 @@ private:
         switch(tensor.data_type())
         {
             case DataType::F16:
+            {
+                arm_compute::utils::uniform_real_distribution_16bit<half> distribution{ -1.0f, 1.0f };
+                library->fill(tensor, distribution, i);
+                break;
+            }
             case DataType::F32:
             {
-                std::uniform_real_distribution<> distribution(-1.0f, 1.0f);
+                std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
                 library->fill(tensor, distribution, i);
                 break;
             }

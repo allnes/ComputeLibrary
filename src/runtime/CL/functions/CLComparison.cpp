@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,9 +24,11 @@
 #include "arm_compute/runtime/CL/functions/CLComparison.h"
 
 #include "arm_compute/core/CL/ICLTensor.h"
-#include "arm_compute/core/CL/kernels/CLComparisonKernel.h"
 #include "arm_compute/core/Types.h"
-#include "support/MemorySupport.h"
+#include "src/core/CL/kernels/CLComparisonKernel.h"
+#include "src/core/CL/kernels/CLFillBorderKernel.h"
+
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
@@ -37,7 +39,8 @@ void CLComparison::configure(ICLTensor *input1, ICLTensor *input2, ICLTensor *ou
 
 void CLComparison::configure(const CLCompileContext &compile_context, ICLTensor *input1, ICLTensor *input2, ICLTensor *output, ComparisonOperation operation)
 {
-    auto k = arm_compute::support::cpp14::make_unique<CLComparisonKernel>();
+    ARM_COMPUTE_LOG_PARAMS(input2, input2, output, operation);
+    auto k = std::make_unique<CLComparisonKernel>();
     k->configure(compile_context, input1, input2, output, operation);
     _kernel = std::move(k);
 
@@ -47,7 +50,7 @@ void CLComparison::configure(const CLCompileContext &compile_context, ICLTensor 
 
         if(broadcasted_info->info()->dimension(0) == 1)
         {
-            _border_handler.configure(compile_context, broadcasted_info, _kernel->border_size(), BorderMode::REPLICATE);
+            _border_handler->configure(compile_context, broadcasted_info, _kernel->border_size(), BorderMode::REPLICATE);
         }
     }
 }
@@ -66,7 +69,7 @@ void CLComparisonStatic<COP>::configure(ICLTensor *input1, ICLTensor *input2, IC
 template <ComparisonOperation COP>
 void CLComparisonStatic<COP>::configure(const CLCompileContext &compile_context, ICLTensor *input1, ICLTensor *input2, ICLTensor *output)
 {
-    auto k = arm_compute::support::cpp14::make_unique<CLComparisonKernel>();
+    auto k = std::make_unique<CLComparisonKernel>();
     k->configure(compile_context, input1, input2, output, COP);
     _kernel = std::move(k);
 
@@ -76,7 +79,7 @@ void CLComparisonStatic<COP>::configure(const CLCompileContext &compile_context,
 
         if(broadcasted_info->info()->dimension(0) == 1)
         {
-            _border_handler.configure(compile_context, broadcasted_info, _kernel->border_size(), BorderMode::REPLICATE);
+            _border_handler->configure(compile_context, broadcasted_info, _kernel->border_size(), BorderMode::REPLICATE);
         }
     }
 }

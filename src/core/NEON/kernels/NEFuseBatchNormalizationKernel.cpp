@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,16 +21,18 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/NEON/kernels/NEFuseBatchNormalizationKernel.h"
+#include "src/core/NEON/kernels/NEFuseBatchNormalizationKernel.h"
 
-#include "arm_compute/core/CPP/Validate.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/ITensor.h"
-#include "arm_compute/core/NEON/wrapper/wrapper.h"
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Utils.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/core/Window.h"
+#include "src/core/CPP/Validate.h"
+#include "src/core/NEON/wrapper/wrapper.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/helpers/WindowHelpers.h"
 
 #include <map>
 
@@ -442,13 +444,11 @@ void NEFuseBatchNormalizationKernel::configure(const ITensor *input_weights, con
     {
         // Output tensor auto initialization if not yet initialized
         auto_init_if_empty(*_fused_weights->info(), *_input_weights->info()->clone());
-        fused_weights->info()->set_valid_region(input_weights->info()->valid_region());
     }
     if(_fused_bias != nullptr)
     {
         // Output tensor auto initialization if not yet initialized
         auto_init_if_empty(*_fused_bias->info(), *_bn_mean->info()->clone());
-        _fused_bias->info()->set_valid_region(bn_mean->info()->valid_region());
     }
 
     // Validate arguments

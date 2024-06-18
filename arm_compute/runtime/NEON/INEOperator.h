@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,7 +25,6 @@
 #define ARM_COMPUTE_INEOPERATOR_H
 
 #include "../../core/ITensor.h"
-#include "arm_compute/core/NEON/INEKernel.h"
 #include "arm_compute/runtime/IOperator.h"
 #include "arm_compute/runtime/IRuntimeContext.h"
 #include "arm_compute/runtime/Types.h"
@@ -34,9 +33,13 @@
 
 namespace arm_compute
 {
+class ICPPKernel;
+class Window;
+
+using INEKernel = ICPPKernel;
 namespace experimental
 {
-/** Basic interface for functions which have a single async NEON kernel */
+/** Basic interface for functions which have a single async CPU kernel */
 class INEOperator : public IOperator
 {
 public:
@@ -53,6 +56,8 @@ public:
     INEOperator &operator=(const INEOperator &) = delete;
     /** Default move assignment operator */
     INEOperator &operator=(INEOperator &&) = default;
+    /** Default destructor */
+    ~INEOperator();
 
     // Inherited methods overridden:
     void run(ITensorPack &tensors) override;
@@ -60,6 +65,8 @@ public:
     MemoryRequirements workspace() const override;
 
 protected:
+    void run(ITensorPack &tensors, const Window &window);
+
     std::unique_ptr<INEKernel> _kernel;
     IRuntimeContext           *_ctx;
     MemoryRequirements         _workspace;

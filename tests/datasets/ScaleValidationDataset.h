@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -140,17 +140,15 @@ const auto ScaleAlignCornersSamplingPolicySet = combine(framework::dataset::make
 }),
 framework::dataset::make("AlignCorners", { true }));
 
-/** Generated shapes: Used by NEON precommit and nightly
+/** Generated shapes: used by precommit and nightly for CPU tests
  * - 2D shapes with 0, 1, 2 vector iterations
  * - 3D shapes with 0, 1 vector iterations
  * - 4D shapes with 0 vector iterations
  */
-#define SCALE_SHAPE_DATASET(element_per_iteration)                                                  \
-    concat(concat(concat(concat(concat(ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 0>(),  \
-                                       ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 1>()), \
-                                ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 2>()),        \
-                         ScaleShapesBaseDataSet<3, 1, (element_per_iteration), 0>()),               \
-                  ScaleShapesBaseDataSet<3, 1, (element_per_iteration), 1>()),                      \
+#define SCALE_SHAPE_DATASET(element_per_iteration)                                    \
+    concat(concat(concat(ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 0>(),  \
+                         ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 2>()), \
+                  ScaleShapesBaseDataSet<3, 1, (element_per_iteration), 1>()),        \
            ScaleShapesBaseDataSet<3, 3, (element_per_iteration), 0>())
 
 // To prevent long precommit time for OpenCL, shape set for OpenCL is separated into below two parts.
@@ -166,11 +164,10 @@ framework::dataset::make("AlignCorners", { true }));
  * - 3D shapes with 0 vector iterations (1 vector iteration is covered by SCALE_PRECOMMIT_SHAPE_DATASET)
  * - 4D shapes with 0 vector iterations
  */
-#define SCALE_NIGHTLY_SHAPE_DATASET(element_per_iteration)                                   \
-    concat(concat(concat(concat(ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 0>(),  \
-                                ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 1>()), \
-                         ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 2>()),        \
-                  ScaleShapesBaseDataSet<3, 1, (element_per_iteration), 0>()),               \
+#define SCALE_NIGHTLY_SHAPE_DATASET(element_per_iteration)                            \
+    concat(concat(concat(ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 0>(),  \
+                         ScaleShapesBaseDataSet<1, 1, (element_per_iteration), 1>()), \
+                  ScaleShapesBaseDataSet<3, 1, (element_per_iteration), 0>()),        \
            ScaleShapesBaseDataSet<3, 3, (element_per_iteration), 0>())
 
 /** Generating dataset for non-quantized data tyeps with the given shapes */
@@ -178,6 +175,12 @@ framework::dataset::make("AlignCorners", { true }));
     combine(combine(combine(combine((shape), ScaleDataLayouts), \
                             ScaleInterpolationPolicySet),       \
                     datasets::BorderModes()),                   \
+            samping_policy_set)
+
+#define ASSEMBLE_NHWC_DATASET(shape, samping_policy_set)                                                      \
+    combine(combine(combine(combine((shape), framework::dataset::make("DataLayout", DataLayout::NHWC)),       \
+                            ScaleInterpolationPolicySet),                                                     \
+                    framework::dataset::make("BorderMode", { BorderMode::CONSTANT, BorderMode::REPLICATE })), \
             samping_policy_set)
 
 /** Generating dataset for quantized data tyeps with the given shapes */

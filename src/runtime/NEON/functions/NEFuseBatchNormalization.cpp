@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -28,9 +28,13 @@
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/NEON/NEScheduler.h"
+#include "src/common/utils/Log.h"
+#include "src/core/NEON/kernels/NEFuseBatchNormalizationKernel.h"
 
 namespace arm_compute
 {
+NEFuseBatchNormalization::~NEFuseBatchNormalization() = default;
+
 NEFuseBatchNormalization::NEFuseBatchNormalization()
     : _fuse_bn_kernel()
 {
@@ -41,7 +45,11 @@ void NEFuseBatchNormalization::configure(const ITensor *input_weights, const ITe
                                          const ITensor *input_bias, const ITensor *bn_beta, const ITensor *bn_gamma,
                                          float epsilon, FuseBatchNormalizationType fbn_type)
 {
-    _fuse_bn_kernel.configure(input_weights, bn_mean, bn_var, fused_weights, fused_bias, input_bias, bn_beta, bn_gamma, epsilon, fbn_type);
+    ARM_COMPUTE_LOG_PARAMS(input_weights, bn_mean, bn_var, fused_weights, fused_bias, input_bias,
+                           bn_beta, bn_gamma, epsilon, fbn_type);
+
+    _fuse_bn_kernel = std::make_unique<NEFuseBatchNormalizationKernel>();
+    _fuse_bn_kernel->configure(input_weights, bn_mean, bn_var, fused_weights, fused_bias, input_bias, bn_beta, bn_gamma, epsilon, fbn_type);
 }
 
 Status NEFuseBatchNormalization::validate(const ITensorInfo *input_weights, const ITensorInfo *bn_mean, const ITensorInfo *bn_var,
@@ -54,6 +62,6 @@ Status NEFuseBatchNormalization::validate(const ITensorInfo *input_weights, cons
 
 void NEFuseBatchNormalization::run()
 {
-    NEScheduler::get().schedule(&_fuse_bn_kernel, Window::DimY);
+    NEScheduler::get().schedule(_fuse_bn_kernel.get(), Window::DimY);
 }
 } // namespace arm_compute

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,19 +24,28 @@
 #ifndef ARM_COMPUTE_NEPRIORBOXLAYER_H
 #define ARM_COMPUTE_NEPRIORBOXLAYER_H
 
-#include "arm_compute/core/NEON/kernels/NEPriorBoxLayerKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/NEON/INESimpleFunctionNoBorder.h"
 
 namespace arm_compute
 {
 class ITensor;
+class ITensorInfo;
 
 /** Basic function to run @ref NEPriorBoxLayerKernel. */
 class NEPriorBoxLayer : public INESimpleFunctionNoBorder
 {
 public:
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0     |src1     |dst      |
+     * |:--------|:--------|:--------|
+     * |F32      |F32      |F32      |
      *
      * @param[in]  input1 First source tensor. Data types supported: F32. Data layouts supported: NCHW/NHWC.
      * @param[in]  input2 Second source tensor. Data types and layouts supported: same as @p input1

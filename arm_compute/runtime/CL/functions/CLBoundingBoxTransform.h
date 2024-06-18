@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,12 +24,16 @@
 #ifndef ARM_COMPUTE_CLBOUNDINGBOXTRANSOFORM_H
 #define ARM_COMPUTE_CLBOUNDINGBOXTRANSOFORM_H
 
-#include "arm_compute/core/CL/kernels/CLBoundingBoxTransformKernel.h"
+#include "arm_compute/core/Error.h"
 #include "arm_compute/runtime/CL/ICLSimpleFunction.h"
 
 namespace arm_compute
 {
+class CLCompileContext;
+class CLBoundingBoxTransformKernel;
+class BoundingBoxTransformInfo;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to run @ref CLBoundingBoxTransformKernel.
  *
@@ -40,6 +44,17 @@ class CLBoundingBoxTransform : public ICLSimpleFunction
 {
 public:
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0           |src1           |dst            |
+     * |:--------------|:--------------|:--------------|
+     * |QASYMM16       |QASYMM8        |QASYMM16       |
+     * |F16            |F16            |F16            |
+     * |F32            |F32            |F32            |
      *
      * @param[in]  boxes      Source tensor. Bounding box proposals in pixel coordinates. Size(M, 4), format [x1, y1, x2, y2]. Data types supported: QASYMM16/F16/F32.
      * @param[out] pred_boxes Destination tensor. Pixel coordinates of the transformed bounding boxes. Size (M, 4*K), format [x1, y1, x2, y2]. Data types supported: Same as @p input

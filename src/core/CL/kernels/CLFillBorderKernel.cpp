@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,19 +21,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/CL/kernels/CLFillBorderKernel.h"
+#include "src/core/CL/kernels/CLFillBorderKernel.h"
 
 #include "arm_compute/core/CL/CLHelpers.h"
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/CL/ICLTensor.h"
 #include "arm_compute/core/CL/OpenCL.h"
-#include "arm_compute/core/Error.h"
 #include "arm_compute/core/TensorInfo.h"
-#include "arm_compute/core/Types.h"
 #include "arm_compute/core/Utils.h"
 #include "arm_compute/core/Validate.h"
-#include "arm_compute/core/Window.h"
-#include "arm_compute/core/utils/misc/Cast.h"
+#include "src/core/helpers/WindowHelpers.h"
+#include "support/Cast.h"
 #include "support/StringSupport.h"
 
 namespace arm_compute
@@ -41,6 +39,7 @@ namespace arm_compute
 CLFillBorderKernel::CLFillBorderKernel()
     : ICLKernel(), _tensor(nullptr)
 {
+    _type = CLKernelType::ELEMENTWISE;
 }
 
 bool CLFillBorderKernel::is_parallelisable() const
@@ -71,6 +70,7 @@ void CLFillBorderKernel::configure(const CLCompileContext &compile_context, ITen
 {
     ARM_COMPUTE_ERROR_ON(tensor == nullptr);
     ARM_COMPUTE_ERROR_ON(tensor->num_channels() != 1);
+    auto padding_info = get_padding_info({ tensor });
 
     border_size.limit(tensor->padding());
 
@@ -168,6 +168,7 @@ void CLFillBorderKernel::configure(const CLCompileContext &compile_context, ITen
     _config_id += support::cpp11::to_string(tensor->dimension(1));
     _config_id += "_";
     _config_id += lower_string(string_from_border_mode(border_mode));
+    ARM_COMPUTE_ERROR_ON(has_padding_changed(padding_info));
 }
 
 void CLFillBorderKernel::run_op(ITensorPack &tensors, const Window &window, cl::CommandQueue &queue)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -43,13 +43,13 @@ inline ::std::ostream &operator<<(::std::ostream &os, const Target &target)
             os << "UNSPECIFIED";
             break;
         case Target::NEON:
-            os << "NEON";
+            os << "Neon";
             break;
         case Target::CL:
             os << "CL";
             break;
-        case Target::GC:
-            os << "GC";
+        case Target::CLVK:
+            os << "CLVK";
             break;
         default:
             ARM_COMPUTE_ERROR("NOT_SUPPORTED!");
@@ -64,6 +64,9 @@ inline ::std::ostream &operator<<(::std::ostream &os, const NodeType &node_type)
     {
         case NodeType::ActivationLayer:
             os << "ActivationLayer";
+            break;
+        case NodeType::ArgMinMaxLayer:
+            os << "ArgMinMaxLayer";
             break;
         case NodeType::BatchNormalizationLayer:
             os << "BatchNormalizationLayer";
@@ -82,6 +85,9 @@ inline ::std::ostream &operator<<(::std::ostream &os, const NodeType &node_type)
             break;
         case NodeType::DeconvolutionLayer:
             os << "DeconvolutionLayer";
+            break;
+        case NodeType::DepthToSpaceLayer:
+            os << "DepthToSpaceLayer";
             break;
         case NodeType::DequantizationLayer:
             os << "DequantizationLayer";
@@ -110,11 +116,20 @@ inline ::std::ostream &operator<<(::std::ostream &os, const NodeType &node_type)
         case NodeType::FusedConvolutionBatchNormalizationLayer:
             os << "FusedConvolutionBatchNormalizationLayer";
             break;
+        case NodeType::FusedConvolutionBatchNormalizationLayerWithPostOpsLayer:
+            os << "FusedConvolutionBatchNormalizationLayerWithPostOpsLayer";
+            break;
+        case NodeType::FusedConvolutionWithPostOp:
+            os << "FusedConvolutionWithPostOp";
+            break;
         case NodeType::FusedDepthwiseConvolutionBatchNormalizationLayer:
             os << "FusedDepthwiseConvolutionBatchNormalizationLayer";
             break;
         case NodeType::GenerateProposalsLayer:
             os << "GenerateProposalsLayer";
+            break;
+        case NodeType::L2NormalizeLayer:
+            os << "L2NormalizeLayer";
             break;
         case NodeType::NormalizationLayer:
             os << "NormalizationLayer";
@@ -143,6 +158,9 @@ inline ::std::ostream &operator<<(::std::ostream &os, const NodeType &node_type)
         case NodeType::QuantizationLayer:
             os << "QuantizationLayer";
             break;
+        case NodeType::ReductionOperationLayer:
+            os << "ReductionOperationLayer";
+            break;
         case NodeType::ReorgLayer:
             os << "ReorgLayer";
             break;
@@ -167,11 +185,11 @@ inline ::std::ostream &operator<<(::std::ostream &os, const NodeType &node_type)
         case NodeType::StackLayer:
             os << "StackLayer";
             break;
+        case NodeType::StridedSliceLayer:
+            os << "StridedSliceLayer";
+            break;
         case NodeType::UpsampleLayer:
             os << "UpsampleLayer";
-            break;
-        case NodeType::YOLOLayer:
-            os << "YOLOLayer";
             break;
         case NodeType::Input:
             os << "Input";
@@ -205,6 +223,9 @@ inline ::std::ostream &operator<<(::std::ostream &os, const EltwiseOperation &el
             break;
         case EltwiseOperation::Sub:
             os << "Sub";
+            break;
+        case EltwiseOperation::Div:
+            os << "Div";
             break;
         default:
             ARM_COMPUTE_ERROR("NOT_SUPPORTED!");

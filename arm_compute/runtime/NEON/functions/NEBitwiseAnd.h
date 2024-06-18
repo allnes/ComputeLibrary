@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -34,7 +34,27 @@ class ITensor;
 class NEBitwiseAnd : public INESimpleFunctionNoBorder
 {
 public:
+    /** Constructor */
+    NEBitwiseAnd() = default;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEBitwiseAnd(const NEBitwiseAnd &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEBitwiseAnd &operator=(const NEBitwiseAnd &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEBitwiseAnd(NEBitwiseAnd &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEBitwiseAnd &operator=(NEBitwiseAnd &&) = delete;
+    /** Default destructor */
+    ~NEBitwiseAnd() = default;
     /** Initialise the kernel's inputs and output
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |U8             |U8             |
      *
      * @param[in]  input1 First tensor input. Data type supported: U8.
      * @param[in]  input2 Second tensor input. Data type supported: U8.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -110,7 +110,13 @@ class GemmHybridQuantized : public GemmCommon<To, Tr> {
 
     static unsigned int compute_n_block(const GemmArgs &args) {
         if (args._cfg && args._cfg->outer_block_size) {
-            return args._cfg->outer_block_size;
+            unsigned int n_block = args._cfg->outer_block_size;
+
+            // Needs to be (at least a single) multiple of the kernel output width.
+            n_block /= strategy::out_width();
+            n_block = std::max(n_block, 1u) * strategy::out_width();
+
+            return n_block;
         }
 
         const unsigned int k_block = compute_k_block(args);
@@ -118,17 +124,26 @@ class GemmHybridQuantized : public GemmCommon<To, Tr> {
 
         // n_block: Work out how many rows (of length k_block) will fit in the L2
         // Don't allocate more than 90% of the L2 to allow for overheads, and subtract off the L1 contents.
-        unsigned int n_block = (((L2_size * 9) / 10) - (k_block * sizeof(Toi) * (strategy::out_width() + strategy::out_height()))) /
-                                 (sizeof(Toi) * k_block);
+        const unsigned int scaled_l2_size = (L2_size * 9) / 10;
+        const unsigned int k_block_area = k_block * sizeof(Toi) * (strategy::out_width() + strategy::out_height());
+
+        // .. if the L1 contents is bigger than the L2, just return a minimal size block.
+        if (k_block_area > scaled_l2_size) {
+            return strategy::out_width();
+        }
+
+        unsigned int n_block = (scaled_l2_size - k_block_area) / (sizeof(Toi) * k_block);
 
         // Needs to be (at least a single) multiple of the kernel output width.
         n_block /= strategy::out_width();
-        n_block = std::max(n_block, 1U) * strategy::out_width();
+        n_block = std::max(n_block, 1u) * strategy::out_width();
 
         // And tune to the presented problem size.
         unsigned int numblocks = iceildiv(args._Nsize, n_block);
         n_block = iceildiv(args._Nsize, numblocks);
         n_block = roundup(n_block, strategy::out_width());
+
+        assert(n_block > 0);
 
         return n_block;
     }
@@ -254,12 +269,16 @@ public:
         return get_col_sum_size() + (roundup(_Nsize, strategy::out_width()) * roundup(_Ksize, strategy::k_unroll()) * _nmulti * sizeof(Toi));
     }
 
-    void pretranspose_B_array(void *in_buffer, const To *B, const int ldb, const int B_multi_stride) override {
+    void requantize_bias(void *in_buffer, const To *B, const int ldb, const int B_multi_stride) override {
         col_bias = reinterpret_cast<int32_t *>(in_buffer);
 
         for (unsigned int i=0; i<_nmulti; i++) {
             compute_col_sums(_qp, _Nsize, _Ksize, B + (i * B_multi_stride), ldb, col_bias + (i * _Nsize),  _Ksize, i, 0);
         }
+    }
+
+    void pretranspose_B_array(void *in_buffer, const To *B, const int ldb, const int B_multi_stride) override {
+        requantize_bias(in_buffer, B, ldb, B_multi_stride);
 
         uintptr_t buffer_int = reinterpret_cast<uintptr_t>(in_buffer);
         Toi *buffer = reinterpret_cast<Toi *>(buffer_int + get_col_sum_size());
@@ -294,6 +313,17 @@ public:
     void set_quantized_bias(const int32_t *bias, size_t bias_multi_stride) override {
         _qp.bias = bias;
         _qp.bias_multi_stride = bias_multi_stride;
+    }
+
+    GemmConfig get_config() override {
+        GemmConfig c;
+
+        c.method = GemmMethod::GEMM_HYBRID;
+        c.inner_block_size = _k_block;
+        c.outer_block_size = _n_block;
+        c.filter = get_type_name<strategy>();
+
+        return c;
     }
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -74,6 +74,17 @@ struct CLQuantization
 
     const ICLFloatArray *scale;  /**< Quantization scale array */
     const ICLInt32Array *offset; /**< Quantization offset array */
+};
+
+enum CLKernelType
+{
+    UNKNOWN,     /**< Unknown CL kernel type */
+    DEPTHWISE,   /**< Depthwise CL kernel type */
+    DIRECT,      /**< Direct Convolution CL kernel type */
+    ELEMENTWISE, /**< Elementeise CL kernel type */
+    GEMM,        /**< GEMM CL kernel type */
+    POOL,        /**< Pool CL kernel type */
+    WINOGRAD     /**< Winograd CL kernel type */
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_CL_TYPES_H */

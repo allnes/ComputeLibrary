@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,8 +24,6 @@
 #ifndef ARM_COMPUTE_CLREDUCTIONOPERATION_H
 #define ARM_COMPUTE_CLREDUCTIONOPERATION_H
 
-#include "arm_compute/core/CL/kernels/CLFillBorderKernel.h"
-#include "arm_compute/core/CL/kernels/CLReductionOperationKernel.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
 #include "arm_compute/runtime/IFunction.h"
@@ -37,6 +35,8 @@
 namespace arm_compute
 {
 // Forward declarations
+class CLCompileContext;
+class CLReductionOperationKernel;
 class ICLTensor;
 
 /** Perform reduction operation.
@@ -49,8 +49,30 @@ public:
      * @param[in] memory_manager (Optional) Memory manager.
      */
     CLReductionOperation(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
+    /** Default Destructor */
+    ~CLReductionOperation();
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    CLReductionOperation(const CLReductionOperation &) = delete;
+    /** Default move constructor */
+    CLReductionOperation(CLReductionOperation &&) = default;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    CLReductionOperation &operator=(const CLReductionOperation &) = delete;
+    /** Default move assignment operator */
+    CLReductionOperation &operator=(CLReductionOperation &&) = default;
 
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |QASYMM8        |QASYMM8        |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED |
+     * |F16            |F16            |
+     * |F32            |F32            |
+     * |S32            |S32            |
      *
      * @param[in]  input     Source tensor. Data types supported: QASYMM8/QASYMM8_SIGNED/F16/F32/S32.
      * @param[out] output    Destination tensor. Data types and data layouts supported: Same as @p input.
@@ -88,15 +110,12 @@ public:
 private:
     ICLTensor *configure_intermediate_result_vector(ICLTensor *input, ICLTensor *output);
 
-    MemoryGroup                             _memory_group;
-    std::vector<CLTensor>                   _results_vector;
-    std::vector<CLReductionOperationKernel> _reduction_kernels_vector;
-    std::vector<CLFillBorderKernel>         _border_handlers_vector;
-    CLReshapeLayer                          _reshape;
-    unsigned int                            _num_of_stages;
-    unsigned int                            _reduction_axis;
-    bool                                    _is_serial;
-    bool                                    _is_reshape_required;
+    MemoryGroup                                 _memory_group;
+    CLTensor                                    _unreshaped_output;
+    std::unique_ptr<CLReductionOperationKernel> _reduction_kernel;
+    CLReshapeLayer                              _reshape;
+    unsigned int                                _reduction_axis;
+    bool                                        _is_reshape_required;
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_CLREDUCTIONOPERATION_H */

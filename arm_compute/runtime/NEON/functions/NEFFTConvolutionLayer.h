@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -43,7 +43,7 @@ namespace arm_compute
 // Forward declarations
 class ITensor;
 
-/** Basic function to execute FFT-based convolution on NEON. This function calls the following NEON functions/kernels:
+/** Basic function to execute FFT-based convolution on CPU. This function calls the following functions/kernels:
  *
  *  -# @ref NEPermute                        Permute input if NHWC(only NCHW is supported).
  *  -# @ref NEPadLayer                       Pad input.
@@ -63,46 +63,58 @@ public:
     NEFFTConvolutionLayer(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
     /** Prevent instances of this class from being copied (As this class contains pointers) */
     NEFFTConvolutionLayer(const NEFFTConvolutionLayer &) = delete;
-    /** Default move constructor */
-    NEFFTConvolutionLayer(NEFFTConvolutionLayer &&) = default;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEFFTConvolutionLayer(NEFFTConvolutionLayer &&) = delete;
     /** Prevent instances of this class from being copied (As this class contains pointers) */
     NEFFTConvolutionLayer &operator=(const NEFFTConvolutionLayer &) = delete;
-    /** Default move assignment operator */
-    NEFFTConvolutionLayer &operator=(NEFFTConvolutionLayer &&) = default;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEFFTConvolutionLayer &operator=(NEFFTConvolutionLayer &&) = delete;
+    /** Default destructor */
+    ~NEFFTConvolutionLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src    |dst    |
+     * |:------|:------|
+     * |F32    |F32    |
      *
      * @note: This function only works with any square kernel size and unit strides for both NCHW and NHWC data layout
      *
-     * @param[in]  input     Source tensor. 3 lower dimensions represent a single input [width, height, IFM],
-     *                       while every optional dimension from 4 and above represent a batch of inputs.
-     *                       Data types supported: F32.
-     * @param[in]  weights   Weights tensor. Weights are 4D tensor with dimensions [kernel_x, kernel_y, IFM, OFM]. Data type supported:Same as @p input.
-     * @param[in]  biases    Biases tensor. Shared biases supported. Biases are 1D tensor with dimensions [OFM].Data type supported: Same as @p input
-     * @param[out] output    Destination tensor. 3 lower dimensions represent a single output [width, height, OFM], while the rest represent batch of outputs.
-     *                       Data types supported: Same as @p input.
-     * @param[in]  conv_info Contains padding and stride information described in @ref PadStrideInfo.
-     * @param[in]  act_info  (Optional) Activation layer information in case of a fused activation.
+     * @param[in]  input            Source tensor. 3 lower dimensions represent a single input [width, height, IFM],
+     *                              while every optional dimension from 4 and above represent a batch of inputs.
+     *                              Data types supported: F32.
+     * @param[in]  weights          Weights tensor. Weights are 4D tensor with dimensions [kernel_x, kernel_y, IFM, OFM]. Data type supported:Same as @p input.
+     * @param[in]  biases           Biases tensor. Shared biases supported. Biases are 1D tensor with dimensions [OFM].Data type supported: Same as @p input
+     * @param[out] output           Destination tensor. 3 lower dimensions represent a single output [width, height, OFM], while the rest represent batch of outputs.
+     *                              Data types supported: Same as @p input.
+     * @param[in]  conv_info        Contains padding and stride information described in @ref PadStrideInfo.
+     * @param[in]  act_info         (Optional) Activation layer information in case of a fused activation.
+     * @param[in]  enable_fast_math (Optional) Enable fast math computation. Unused for CPU backend.
      */
     void configure(ITensor *input, const ITensor *weights, const ITensor *biases, ITensor *output, const PadStrideInfo &conv_info,
-                   const ActivationLayerInfo &act_info = ActivationLayerInfo());
+                   const ActivationLayerInfo &act_info = ActivationLayerInfo(), bool enable_fast_math = false);
     /** Static function to check if given info will lead to a valid configuration of @ref NEFFTConvolutionLayer
      *
      * @note: This function only works with any square kernel size and unit strides for both NCHW and NHWC data layout
      *
-     * @param[in] input     Source tensor. 3 lower dimensions represent a single input [width, height, IFM],
-     *                      while every optional dimension from 4 and above represent a batch of inputs.
-     *                      Data types supported: F32.
-     * @param[in] weights   Weights tensor. Weights are 4D tensor with dimensions [kernel_x, kernel_y, IFM, OFM]. Data type supported:Same as @p input.
-     * @param[in] biases    Biases tensor. Shared biases supported. Biases are 1D tensor with dimensions [OFM].Data type supported: Same as @p input
-     * @param[in] output    Destination tensor. 3 lower dimensions represent a single output [width, height, OFM], while the rest represent batch of outputs.
-     *                      Data types supported: Same as @p input.
-     * @param[in] conv_info Contains padding and stride information described in @ref PadStrideInfo.
-     * @param[in] act_info  (Optional) Activation layer information in case of a fused activation.
+     * @param[in] input            Source tensor. 3 lower dimensions represent a single input [width, height, IFM],
+     *                             while every optional dimension from 4 and above represent a batch of inputs.
+     *                             Data types supported: F32.
+     * @param[in] weights          Weights tensor. Weights are 4D tensor with dimensions [kernel_x, kernel_y, IFM, OFM]. Data type supported:Same as @p input.
+     * @param[in] biases           Biases tensor. Shared biases supported. Biases are 1D tensor with dimensions [OFM].Data type supported: Same as @p input
+     * @param[in] output           Destination tensor. 3 lower dimensions represent a single output [width, height, OFM], while the rest represent batch of outputs.
+     *                             Data types supported: Same as @p input.
+     * @param[in] conv_info        Contains padding and stride information described in @ref PadStrideInfo.
+     * @param[in] act_info         (Optional) Activation layer information in case of a fused activation.
+     * @param[in] enable_fast_math (Optional) Enable fast math computation. Unused for CPU backend.
      *
      * @return a status
      */
     static Status validate(const ITensorInfo *input, const ITensorInfo *weights, const ITensorInfo *biases, const ITensorInfo *output, const PadStrideInfo &conv_info,
-                           const ActivationLayerInfo &act_info = ActivationLayerInfo());
+                           const ActivationLayerInfo &act_info = ActivationLayerInfo(), bool enable_fast_math = false);
 
     // Inherited methods overridden:
     void run() override;

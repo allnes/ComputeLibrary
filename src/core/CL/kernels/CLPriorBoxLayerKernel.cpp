@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,17 +21,18 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/CL/kernels/CLPriorBoxLayerKernel.h"
+#include "src/core/CL/kernels/CLPriorBoxLayerKernel.h"
 
 #include "arm_compute/core/CL/CLHelpers.h"
 #include "arm_compute/core/CL/CLKernelLibrary.h"
-#include "arm_compute/core/CL/CLValidate.h"
 #include "arm_compute/core/CL/ICLTensor.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Utils.h"
-#include "arm_compute/core/Window.h"
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
+#include "src/core/CL/CLValidate.h"
+#include "src/core/helpers/AutoConfiguration.h"
+#include "src/core/helpers/WindowHelpers.h"
 
 #include "support/StringSupport.h"
 
@@ -98,6 +99,7 @@ std::pair<Status, Window> validate_and_configure_window(const ITensorInfo *input
 CLPriorBoxLayerKernel::CLPriorBoxLayerKernel()
     : _input1(nullptr), _input2(nullptr), _output(nullptr), _info(), _num_priors(), _min(), _max(), _aspect_ratios()
 {
+    _type = CLKernelType::ELEMENTWISE;
 }
 
 void CLPriorBoxLayerKernel::configure(const ICLTensor *input1, const ICLTensor *input2, ICLTensor *output, const PriorBoxLayerInfo &info, cl::Buffer *min, cl::Buffer *max, cl::Buffer *aspect_ratios)

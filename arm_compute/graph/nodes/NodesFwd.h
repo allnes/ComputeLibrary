@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -31,6 +31,7 @@ namespace graph
 // Forward declarations
 class INode;
 class ActivationLayerNode;
+class ArgMinMaxLayerNode;
 class BatchNormalizationLayerNode;
 class BoundingBoxTransformLayerNode;
 class ChannelShuffleLayerNode;
@@ -38,6 +39,7 @@ class ConcatenateLayerNode;
 class ConstNode;
 class ConvolutionLayerNode;
 class DeconvolutionLayerNode;
+class DepthToSpaceLayerNode;
 class DepthwiseConvolutionLayerNode;
 class DequantizationLayerNode;
 class DetectionOutputLayerNode;
@@ -47,9 +49,12 @@ class EltwiseLayerNode;
 class FlattenLayerNode;
 class FullyConnectedLayerNode;
 class FusedConvolutionBatchNormalizationNode;
+class FusedConvolutionWithPostOpNode;
 class FusedDepthwiseConvolutionBatchNormalizationNode;
+class FusedConvolutionBatchNormalizationWithPostOpsNode;
 class GenerateProposalsLayerNode;
 class InputNode;
+class L2NormalizeLayerNode;
 class NormalizationLayerNode;
 class NormalizePlanarYUVLayerNode;
 class OutputNode;
@@ -60,6 +65,7 @@ class PReluLayerNode;
 class PrintLayerNode;
 class PriorBoxLayerNode;
 class QuantizationLayerNode;
+class ReductionLayerNode;
 class ReorgLayerNode;
 class ReshapeLayerNode;
 class ResizeLayerNode;
@@ -68,8 +74,7 @@ class SoftmaxLayerNode;
 class SliceLayerNode;
 class SplitLayerNode;
 class StackLayerNode;
-class UpsampleLayerNode;
-class YOLOLayerNode;
+class StridedSliceLayerNode;
 } // namespace graph
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_GRAPH_NODES_FWD_H */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -28,6 +28,8 @@
 #include "arm_compute/core/Error.h"
 #include "arm_compute/core/Utils.h"
 #include "support/StringSupport.h"
+
+#include <regex>
 
 namespace arm_compute
 {
@@ -137,15 +139,16 @@ Kernel::Kernel(std::string name, const cl::Program &program)
 {
 }
 CLCompileContext::CLCompileContext()
-    : _context(), _device(), _programs_map(), _built_programs_map()
+    : _context(), _device(), _programs_map(), _built_programs_map(), _is_wbsm_supported()
 {
 }
 
 CLCompileContext::CLCompileContext(cl::Context context, const cl::Device &device)
-    : _context(), _device(), _programs_map(), _built_programs_map()
+    : _context(), _device(), _programs_map(), _built_programs_map(), _is_wbsm_supported()
 {
-    _context = std::move(context);
-    _device  = CLDevice(device);
+    _context           = std::move(context);
+    _device            = CLDevice(device);
+    _is_wbsm_supported = get_wbsm_support_info(device);
 }
 
 Kernel CLCompileContext::create_kernel(const std::string &kernel_name, const std::string &program_name, const std::string &program_source,
@@ -262,6 +265,18 @@ std::string CLCompileContext::generate_build_options(const StringSet &build_opti
         ARM_COMPUTE_ERROR("Non uniform workgroup size is not supported!!");
     }
 
+    if(gpu_arch != GPUTarget::UNKNOWN && gpu_arch != GPUTarget::MIDGARD)
+    {
+        const std::string device_vers = _device.device_version();
+        const std::regex  ddk_regex("r([0-9]*)p[0-9]");
+        std::smatch       ddk_match;
+
+        if(std::regex_search(device_vers, ddk_match, ddk_regex) && std::stoi(ddk_match[1]) >= 11)
+        {
+            concat_str += " -DUNROLL_WITH_PRAGMA ";
+        }
+    }
+
     std::string build_options = stringify_set(build_options_set, kernel_path) + concat_str;
 
     return build_options;
@@ -318,7 +333,8 @@ const cl::Device &CLCompileContext::get_device() const
 
 void CLCompileContext::set_device(cl::Device device)
 {
-    _device = std::move(device);
+    _device            = std::move(device);
+    _is_wbsm_supported = get_wbsm_support_info(device);
 }
 
 cl::NDRange CLCompileContext::default_ndrange() const
@@ -344,6 +360,11 @@ cl::NDRange CLCompileContext::default_ndrange() const
 bool CLCompileContext::int64_base_atomics_supported() const
 {
     return _device.supported("cl_khr_int64_base_atomics");
+}
+
+bool CLCompileContext::is_wbsm_supported() const
+{
+    return _is_wbsm_supported;
 }
 
 size_t CLCompileContext::max_local_workgroup_size(const cl::Kernel &kernel) const

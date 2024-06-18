@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,7 +24,6 @@
 #ifndef ARM_COMPUTE_CLARGMINMAXLAYER_H
 #define ARM_COMPUTE_CLARGMINMAXLAYER_H
 
-#include "arm_compute/core/CL/kernels/CLArgMinMaxLayerKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
@@ -36,6 +35,7 @@ namespace arm_compute
 {
 class ITensorInfo;
 class ICLTensor;
+class CLArgMinMaxLayerKernel;
 
 /** Function to calculate the index of the minimum or maximum values in a
  *  tensor based on an axis.
@@ -53,7 +53,29 @@ public:
      * @param[in] memory_manager (Optional) Memory manager.
      */
     CLArgMinMaxLayer(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
+    /** Prevent instances of this class from being copied */
+    CLArgMinMaxLayer(const CLArgMinMaxLayer &) = delete;
+    /** Prevent instances of this class from being copied */
+    CLArgMinMaxLayer &operator=(const CLArgMinMaxLayer &) = delete;
+    /** Prevent instances of this class to be moved */
+    CLArgMinMaxLayer(CLArgMinMaxLayer &&) = delete;
+    /** Prevent instances of this class to be moved */
+    CLArgMinMaxLayer &operator=(CLArgMinMaxLayer &&) = delete;
+    /** Default destructor */
+    ~CLArgMinMaxLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst       |
+     * |:--------------|:---------|
+     * |QASYMM8        |U32, S32  |
+     * |QASYMM8_SIGNED |U32, S32  |
+     * |S32            |U32, S32  |
+     * |F16            |U32, S32  |
+     * |F32            |U32, S32  |
      *
      * @param[in]  input  Input source tensor. Data types supported: QASYMM8/QASYMM8_SIGNED/S32/F16/F32.
      * @param[in]  axis   Axis to find max/min index.
@@ -85,13 +107,13 @@ public:
     void run() override;
 
 private:
-    MemoryGroup                         _memory_group;
-    std::vector<CLTensor>               _results_vector;
-    CLTensor                            _not_reshaped_output;
-    std::vector<CLArgMinMaxLayerKernel> _reduction_kernels_vector;
-    CLReshapeLayer                      _reshape;
-    unsigned int                        _num_of_stages;
-    unsigned int                        _reduction_axis;
+    MemoryGroup                                          _memory_group;
+    std::vector<CLTensor>                                _results_vector;
+    CLTensor                                             _not_reshaped_output;
+    std::vector<std::unique_ptr<CLArgMinMaxLayerKernel>> _reduction_kernels_vector;
+    CLReshapeLayer                                       _reshape;
+    unsigned int                                         _num_of_stages;
+    unsigned int                                         _reduction_axis;
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_CLARGMINMAXLAYER_H */

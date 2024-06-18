@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,21 +24,31 @@
 #ifndef ARM_COMPUTE_NEFILLBORDER_H
 #define ARM_COMPUTE_NEFILLBORDER_H
 
-#include "arm_compute/core/NEON/kernels/NEFillBorderKernel.h"
 #include "arm_compute/core/PixelValue.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
+#include <memory>
 
 namespace arm_compute
 {
 // Forward declaration
 class ITensor;
+class NEFillBorderKernel;
 
 /** Basic function to run @ref NEFillBorderKernel */
 class NEFillBorder : public IFunction
 {
 public:
+    NEFillBorder();
     /** Initialize the function's source, destination and border_mode.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |All            |All            |
      *
      * @note This function fills the borders within the XY-planes.
      *
@@ -53,7 +63,7 @@ public:
     void run() override;
 
 private:
-    NEFillBorderKernel _border_handler; /**< Kernel to handle image borders */
+    std::unique_ptr<NEFillBorderKernel> _border_handler; /**< Kernel to handle image borders */
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_NEFILLBORDER_H */

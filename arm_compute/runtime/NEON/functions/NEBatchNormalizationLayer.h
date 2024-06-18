@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,14 +24,16 @@
 #ifndef ARM_COMPUTE_NEBATCHNORMALIZATIONLAYER_H
 #define ARM_COMPUTE_NEBATCHNORMALIZATIONLAYER_H
 
-#include "arm_compute/core/NEON/kernels/NEBatchNormalizationLayerKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/NEON/functions/NEActivationLayer.h"
 
+#include <memory>
+
 namespace arm_compute
 {
 class ITensor;
+class NEBatchNormalizationLayerKernel;
 
 /** Basic function to run @ref NENormalizationLayerKernel and simulate a batch normalization layer.
  *
@@ -42,9 +44,29 @@ class ITensor;
 class NEBatchNormalizationLayer : public IFunction
 {
 public:
-    /** Default constructor */
+    /** Constructor */
     NEBatchNormalizationLayer();
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEBatchNormalizationLayer(const NEBatchNormalizationLayer &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEBatchNormalizationLayer &operator=(const NEBatchNormalizationLayer &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEBatchNormalizationLayer(NEBatchNormalizationLayer &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEBatchNormalizationLayer &operator=(NEBatchNormalizationLayer &&) = delete;
+    /** Default destructor */
+    ~NEBatchNormalizationLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |F32            |F32            |
+     * |F16            |F16            |
      *
      * @note If the output tensor is a nullptr or is equal to the input, the batch normalization function will be performed in-place
      *
@@ -85,7 +107,7 @@ public:
     void run() override;
 
 private:
-    NEBatchNormalizationLayerKernel _norm_kernel; /**< Batch normalization layer kernel */
+    std::unique_ptr<NEBatchNormalizationLayerKernel> _norm_kernel; /**< Batch normalization layer kernel */
 };
 }
 #endif /* ARM_COMPUTE_NEBATCHNORMALIZATIONLAYER_H */

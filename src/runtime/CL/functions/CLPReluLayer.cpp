@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,86 +21,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/CL/kernels/CLElementwiseOperationKernel.h"
-
-#include "arm_compute/core/CL/ICLTensor.h"
-#include "arm_compute/runtime/CL/CLScheduler.h"
 #include "arm_compute/runtime/CL/functions/CLPReluLayer.h"
-#include "support/MemorySupport.h"
+#include "arm_compute/core/CL/CLKernelLibrary.h"
+#include "arm_compute/core/CL/ICLTensor.h"
+#include "src/gpu/cl/IClKernel.h"
+#include "src/gpu/cl/operators/ClPRelu.h"
 
 namespace arm_compute
 {
-namespace
-{
-void configure_border_handler(const CLCompileContext &compile_context, CLFillBorderKernel &border_handler, BorderSize border_size, ITensorInfo *input1, ITensorInfo *input2, const ITensorInfo *output)
-{
-    if(output->dimension(0) > 1)
-    {
-        ITensorInfo *broadcasted_info = (input1->dimension(0) == 1) ? input1 : input2;
-
-        if(broadcasted_info->dimension(0) == 1)
-        {
-            border_handler.configure(compile_context, broadcasted_info, border_size, BorderMode::REPLICATE);
-        }
-    }
-}
-
-ITensorPack select_border_input(ITensorPack &tensors)
-{
-    ITensorPack pack;
-    if(tensors.get_tensor(TensorType::ACL_DST)->info()->dimension(0) > 1)
-    {
-        if(tensors.get_const_tensor(TensorType::ACL_SRC_1)->info()->dimension(0) == 1)
-        {
-            pack.add_tensor(TensorType::ACL_SRC, tensors.get_const_tensor(TensorType::ACL_SRC_1));
-        }
-        else
-        {
-            pack.add_tensor(TensorType::ACL_SRC, tensors.get_const_tensor(TensorType::ACL_SRC_0));
-        }
-    }
-    return pack;
-}
-} // namespace
-
-namespace experimental
-{
-CLPReluLayer::CLPReluLayer()
-    : _border_handler()
-{
-}
-
-void CLPReluLayer::configure(const CLCompileContext &compile_context, ITensorInfo *input, ITensorInfo *alpha, ITensorInfo *output)
-{
-    auto k = arm_compute::support::cpp14::make_unique<CLArithmeticOperationKernel>();
-    k->configure(compile_context, ArithmeticOperation::PRELU, input, alpha, output);
-    _kernel = std::move(k);
-    configure_border_handler(compile_context, _border_handler, _kernel->border_size(), input, alpha, output);
-}
-
-Status CLPReluLayer::validate(const ITensorInfo *input, const ITensorInfo *alpha, const ITensorInfo *output)
-{
-    return CLArithmeticOperationKernel::validate(ArithmeticOperation::PRELU, input, alpha, output);
-}
-
-void CLPReluLayer::run(ITensorPack &tensors)
-{
-    auto border_pack = select_border_input(tensors);
-    CLScheduler::get().enqueue_op(_border_handler, border_pack);
-    ICLOperator::run(tensors);
-}
-} // namespace experimental
+using OperatorType = opencl::ClPRelu;
 
 struct CLPReluLayer::Impl
 {
-    const ICLTensor                            *src_0{ nullptr };
-    const ICLTensor                            *src_1{ nullptr };
-    ICLTensor                                  *dst{ nullptr };
-    std::unique_ptr<experimental::CLPReluLayer> op{ nullptr };
+    const ICLTensor              *src_0{ nullptr };
+    const ICLTensor              *src_1{ nullptr };
+    ICLTensor                    *dst{ nullptr };
+    std::unique_ptr<OperatorType> op{ nullptr };
 };
 
 CLPReluLayer::CLPReluLayer()
-    : _impl(support::cpp14::make_unique<Impl>())
+    : _impl(std::make_unique<Impl>())
 {
 }
 CLPReluLayer::CLPReluLayer(CLPReluLayer &&) = default;
@@ -117,13 +57,13 @@ void CLPReluLayer::configure(const CLCompileContext &compile_context, ICLTensor 
     _impl->src_0 = input;
     _impl->src_1 = alpha;
     _impl->dst   = output;
-    _impl->op    = arm_compute::support::cpp14::make_unique<experimental::CLPReluLayer>();
-    _impl->op->configure(compile_context, input->info(), alpha->info(), output->info());
+    _impl->op    = std::make_unique<OperatorType>();
+    _impl->op->configure(compile_context, input->info(), alpha->info(), (output == nullptr ? input->info() : output->info()));
 }
 
 Status CLPReluLayer::validate(const ITensorInfo *input, const ITensorInfo *alpha, const ITensorInfo *output)
 {
-    return experimental::CLPReluLayer::validate(input, alpha, output);
+    return OperatorType::validate(input, alpha, output);
 }
 
 void CLPReluLayer::run()

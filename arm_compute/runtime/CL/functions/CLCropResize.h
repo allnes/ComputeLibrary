@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,10 +25,11 @@
 #define ARM_COMPUTE_CL_CROP_RESIZE_H
 
 #include "arm_compute/core/CL/ICLTensor.h"
-#include "arm_compute/core/CL/kernels/CLCopyKernel.h"
-#include "arm_compute/core/CL/kernels/CLCropKernel.h"
-#include "arm_compute/core/CL/kernels/CLMemsetKernel.h"
+
 #include "arm_compute/runtime/CL/CLTensor.h"
+#include "arm_compute/runtime/CL/functions/CLCopy.h"
+#include "arm_compute/runtime/CL/functions/CLCrop.h"
+#include "arm_compute/runtime/CL/functions/CLFill.h"
 #include "arm_compute/runtime/CL/functions/CLScale.h"
 
 #include <cstdint>
@@ -37,7 +38,9 @@
 namespace arm_compute
 {
 // Forward Declarations
+class CLCompileContext;
 class ITensor;
+class ITensorInfo;
 
 /** Function to perform cropping and resizing */
 class CLCropResize : public IFunction
@@ -54,9 +57,17 @@ public:
     /** Allow instances of this class to be moved */
     CLCropResize &operator=(CLCropResize &&) = default;
     /** Default destructor */
-    virtual ~CLCropResize() = default;
+    ~CLCropResize();
 
     /** Configure kernel
+     *
+     * Valid data layouts:
+     * - NHWC
+     *
+     * Valid data type configurations:
+     * |src0     |src1     |src2   |dst      |
+     * |:--------|:--------|:------|:--------|
+     * |All      |F32      |F32    |F32      |
      *
      * @note Supported tensor rank: up to 4
      * @note Box indices may be outside of the bounds, in which case @p extrapolation_value is used.
@@ -123,12 +134,12 @@ public:
     InterpolationPolicy _method;
     float               _extrapolation_value;
 
-    std::vector<std::unique_ptr<CLScale>>      _scale;
-    std::vector<std::unique_ptr<CLCopyKernel>> _copy;
-    std::vector<std::unique_ptr<CLTensor>>     _crop_results;
-    std::vector<std::unique_ptr<CLTensor>>     _scaled_results;
+    std::vector<std::unique_ptr<CLScale>>  _scale;
+    std::vector<std::unique_ptr<CLCopy>>   _copy;
+    std::vector<std::unique_ptr<CLTensor>> _crop_results;
+    std::vector<std::unique_ptr<CLTensor>> _scaled_results;
 
-    std::vector<std::unique_ptr<ICLKernel>> _internal_kernels;
+    std::vector<std::unique_ptr<IFunction>> _internal_functions;
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_CL_CROP_RESIZE_H */

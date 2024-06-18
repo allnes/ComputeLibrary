@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -196,9 +196,12 @@ void call_all_const_node_accessors(Graph &g)
 
     for(auto &node : nodes)
     {
-        if(node != nullptr && node->type() == NodeType::Const)
+        if(node != nullptr && node->type() == NodeType::Const && node->num_outputs())
         {
-            call_tensor_accessor(node->output(0));
+            if(!node->output(0)->bound_edges().empty())
+            {
+                call_tensor_accessor(node->output(0));
+            }
         }
     }
 }
@@ -261,6 +264,8 @@ bool call_all_output_node_accessors(ExecutionWorkload &workload)
         bool valid_output = (output_tensor != nullptr) && output_tensor->call_accessor();
         is_valid          = is_valid && valid_output;
     });
+
+    sync_backends();
 
     return is_valid;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,6 +22,8 @@
  * SOFTWARE.
  */
 #pragma once
+
+#include "../asmlib.hpp"
 
 template <unsigned int IntBy, typename TIn, typename TOut>
 struct TransposeInterleaveCommon {
@@ -56,7 +58,7 @@ struct TransposeInterleaveCommon {
     }
   }
 
-  static inline void Transform(TOut *out, const TIn *in, const int stride, const int x0, const int xmax, const int k0, const int kmax) {
+  static void Transform(TOut *out, const TIn *in, const int stride, const int x0, const int xmax, const int k0, const int kmax) {
     const auto ldin = stride;
 
     TOut *outarray = out;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,12 +24,14 @@
 #ifndef ARM_COMPUTE_NECHANNELSHUFFLELAYER_H
 #define ARM_COMPUTE_NECHANNELSHUFFLELAYER_H
 
+#include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/NEON/INESimpleFunctionNoBorder.h"
 
 namespace arm_compute
 {
 // Forward declarations
 class ITensor;
+class ITensorInfo;
 
 /** Basic function to run @ref NEChannelShuffleLayerKernel
  *
@@ -41,6 +43,15 @@ class NEChannelShuffleLayer : public INESimpleFunctionNoBorder
 {
 public:
     /** Initialize the function
+     *
+     * Valid data layouts:
+     * - NCHW
+     * - NHWC
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |All            |All            |
      *
      * @param[in]  input      Input tensor. Data types supported: All
      * @param[out] output     Output tensor. Data type supported: Same as @p input

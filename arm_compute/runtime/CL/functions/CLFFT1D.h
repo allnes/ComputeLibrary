@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,9 +26,6 @@
 
 #include "arm_compute/runtime/IFunction.h"
 
-#include "arm_compute/core/CL/kernels/CLFFTDigitReverseKernel.h"
-#include "arm_compute/core/CL/kernels/CLFFTRadixStageKernel.h"
-#include "arm_compute/core/CL/kernels/CLFFTScaleKernel.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/FunctionDescriptors.h"
 #include "arm_compute/runtime/MemoryGroup.h"
@@ -36,6 +33,9 @@
 namespace arm_compute
 {
 // Forward declaration
+class CLFFTDigitReverseKernel;
+class CLFFTRadixStageKernel;
+class CLFFTScaleKernel;
 class ICLTensor;
 
 /** Basic function to execute one dimensional FFT. This function calls the following OpenCL kernels:
@@ -49,9 +49,28 @@ class CLFFT1D : public IFunction
 public:
     /** Default Constructor */
     CLFFT1D(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
+    /** Prevent instances of this class from being copied */
+    CLFFT1D(const CLFFT1D &) = delete;
+    /** Prevent instances of this class from being copied */
+    CLFFT1D &operator=(const CLFFT1D &) = delete;
+    /** Default move constructor */
+    CLFFT1D(CLFFT1D &&) = default;
+    /** Default move assignment operator */
+    CLFFT1D &operator=(CLFFT1D &&) = default;
+    /** Default destructor */
+    ~CLFFT1D();
     /** Initialise the function's source, destinations and border mode.
      *
-     * @param[in]  input  Source tensor. Data types supported: F32.
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src    |dst    |
+     * |:------|:------|
+     * |F32    |F32    |
+     * |F16    |F16    |
+     *
+     * @param[in]  input  Source tensor. Data types supported: F16/F32.
      * @param[out] output Destination tensor. Data types and data layouts supported: Same as @p input.
      * @param[in]  config FFT related configuration
      */
@@ -59,14 +78,14 @@ public:
     /** Initialise the function's source, destinations and border mode.
      *
      * @param[in]  compile_context The compile context to be used.
-     * @param[in]  input           Source tensor. Data types supported: F32.
+     * @param[in]  input           Source tensor. Data types supported: F16/F32.
      * @param[out] output          Destination tensor. Data types and data layouts supported: Same as @p input.
      * @param[in]  config          FFT related configuration
      */
     void configure(const CLCompileContext &compile_context, const ICLTensor *input, ICLTensor *output, const FFT1DInfo &config);
     /** Static function to check if given info will lead to a valid configuration of @ref CLFFT1D.
      *
-     * @param[in] input  Source tensor info. Data types supported: F32.
+     * @param[in] input  Source tensor info. Data types supported: F16/F32.
      * @param[in] output Destination tensor info. Data types and data layouts supported: Same as @p input.
      * @param[in] config FFT related configuration
      *
@@ -78,14 +97,14 @@ public:
     void run() override;
 
 protected:
-    MemoryGroup                        _memory_group;
-    CLFFTDigitReverseKernel            _digit_reverse_kernel;
-    std::vector<CLFFTRadixStageKernel> _fft_kernels;
-    CLFFTScaleKernel                   _scale_kernel;
-    CLTensor                           _digit_reversed_input;
-    CLTensor                           _digit_reverse_indices;
-    unsigned int                       _num_ffts;
-    bool                               _run_scale;
+    MemoryGroup                                         _memory_group;
+    std::unique_ptr<CLFFTDigitReverseKernel>            _digit_reverse_kernel;
+    std::vector<std::unique_ptr<CLFFTRadixStageKernel>> _fft_kernels;
+    std::unique_ptr<CLFFTScaleKernel>                   _scale_kernel;
+    CLTensor                                            _digit_reversed_input;
+    CLTensor                                            _digit_reverse_indices;
+    unsigned int                                        _num_ffts;
+    bool                                                _run_scale;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_CLFFT1D_H */

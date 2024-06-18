@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,11 +26,15 @@
 
 #include "arm_compute/runtime/Array.h"
 #include "arm_compute/runtime/NEON/INESimpleFunction.h"
-#include "support/MemorySupport.h"
+#include "arm_compute/runtime/NEON/INESimpleFunctionNoBorder.h"
+#include "arm_compute/runtime/NEON/NEScheduler.h"
+#include "src/core/NEON/kernels/NEFillBorderKernel.h"
+#include "src/cpu/ICpuOperator.h"
 #include "tests/Globals.h"
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <vector>
 
 namespace arm_compute
@@ -52,7 +56,7 @@ void fill_tensors(D &&dist, std::initializer_list<int> seeds, T &&tensor, Ts &&.
 
 /** This template synthetizes an INESimpleFunction which runs the given kernel K */
 template <typename K>
-class NESynthetizeFunction : public INESimpleFunction
+class NESynthetizeFunction : public INESimpleFunctionNoBorder
 {
 public:
     /** Configure the kernel.
@@ -62,7 +66,7 @@ public:
     template <typename... Args>
     void configure(Args &&... args)
     {
-        auto k = arm_compute::support::cpp14::make_unique<K>();
+        auto k = std::make_unique<K>();
         k->configure(std::forward<Args>(args)...);
         _kernel = std::move(k);
     }
@@ -90,16 +94,19 @@ public:
     template <typename T, typename... Args>
     void configure(T first, Args &&... args)
     {
-        auto k = arm_compute::support::cpp14::make_unique<K>();
+        auto k = std::make_unique<K>();
         k->configure(first, std::forward<Args>(args)...);
         _kernel = std::move(k);
-        _border_handler.configure(first, BorderSize(bordersize), BorderMode::CONSTANT, PixelValue());
+
+        auto b = std::make_unique<NEFillBorderKernel>();
+        b->configure(first, BorderSize(bordersize), BorderMode::CONSTANT, PixelValue());
+        _border_handler = std::move(b);
     }
 };
 
 /** As above but this also setups a Zero border on the input tensor of the kernel's bordersize */
 template <typename K>
-class NESynthetizeFunctionWithZeroConstantKernelBorder : public INESimpleFunction
+class NESynthetizeFunctionWithZeroConstantKernelBorder : public cpu::ICpuOperator
 {
 public:
     /** Configure the kernel.
@@ -110,11 +117,23 @@ public:
     template <typename T, typename... Args>
     void configure(T first, Args &&... args)
     {
-        auto k = arm_compute::support::cpp14::make_unique<K>();
+        auto k = std::make_unique<K>();
         k->configure(first, std::forward<Args>(args)...);
         _kernel = std::move(k);
-        _border_handler.configure(first, BorderSize(_kernel->border_size()), BorderMode::CONSTANT, PixelValue());
+
+        auto b = std::make_unique<NEFillBorderKernel>();
+        b->configure(first, BorderSize(_kernel->border_size()), BorderMode::CONSTANT, PixelValue());
+        _border_handler = std::move(b);
     }
+
+    void run(ITensorPack &tensors)
+    {
+        NEScheduler::get().schedule(_border_handler.get(), Window::DimZ);
+        NEScheduler::get().schedule_op(_kernel.get(), Window::DimY, _kernel->window(), tensors);
+    }
+
+private:
+    std::unique_ptr<INEKernel> _border_handler{ nullptr };
 };
 
 } // namespace test

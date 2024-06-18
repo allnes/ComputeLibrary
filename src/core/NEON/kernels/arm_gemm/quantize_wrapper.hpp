@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -110,7 +110,7 @@ public:
     QuantizeWrapper operator=(const QuantizeWrapper &) = delete;
 
     QuantizeWrapper(const GemmArgs &args, const Requantize32 &qp) : _params(qp), _args(args), _barrier(args._maxthreads) {
-        GemmArgs newargs = GemmArgs(args._ci, args._Msize, args._Nsize, args._Ksize, args._nbatches, args._nmulti, Activation(), args._maxthreads, nullptr);
+        GemmArgs newargs = GemmArgs(args._ci, args._Msize, args._Nsize, args._Ksize, args._Ksections, args._nbatches, args._nmulti, args._indirect_input, Activation(), args._maxthreads);
         _subgemm = gemm<To, Tgemm>(newargs);
 
         if (_subgemm == nullptr) {
@@ -179,13 +179,16 @@ public:
         return _subgemm->get_B_pretransposed_array_size() + col_sum_size();
     }
 
+    void requantize_bias(void *in_buffer, const To *B, const int ldb, const int B_multi_stride) override {
+        _col_sums = reinterpret_cast<int32_t *>(in_buffer);
+        col_sums_pretransposed(B, ldb, B_multi_stride);
+    }
+
     void pretranspose_B_array(void *buffer, const To *B, const int ldb, const int B_multi_stride) override {
         uintptr_t buffer_int = reinterpret_cast<uintptr_t>(buffer);
         _subgemm->pretranspose_B_array(reinterpret_cast<void *>(buffer_int + col_sum_size()), B, ldb, B_multi_stride);
 
-        _col_sums = reinterpret_cast<int32_t *>(buffer);
-
-        col_sums_pretransposed(B, ldb, B_multi_stride);
+        requantize_bias(buffer, B, ldb, B_multi_stride);
     }
 
     void set_pretransposed_B_data(void *buffer) override {
@@ -197,6 +200,19 @@ public:
     void set_quantized_bias(const int32_t *bias, size_t bias_multi_stride) override {
         _params.bias = bias;
         _params.bias_multi_stride = bias_multi_stride;
+    }
+
+    GemmConfig get_config() override {
+        GemmConfig c = _subgemm->get_config();
+
+        std::string n = "quantize_wrapper[";
+        n.append(c.filter);
+        n.append("]");
+
+        c.method = GemmMethod::QUANTIZE_WRAPPER;
+        c.filter = n;
+
+        return c;
     }
 };
 

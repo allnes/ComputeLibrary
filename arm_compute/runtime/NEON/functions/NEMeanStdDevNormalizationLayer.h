@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -30,12 +30,35 @@
 namespace arm_compute
 {
 class ITensor;
+class ITensorInfo;
 
 /** Basic function to execute mean and standard deviation normalization by calling @ref NEMeanStdDevNormalizationKernel */
 class NEMeanStdDevNormalizationLayer : public INESimpleFunctionNoBorder
 {
 public:
+    /** Constructor */
+    NEMeanStdDevNormalizationLayer() = default;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEMeanStdDevNormalizationLayer(const NEMeanStdDevNormalizationLayer &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEMeanStdDevNormalizationLayer &operator=(const NEMeanStdDevNormalizationLayer &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEMeanStdDevNormalizationLayer(NEMeanStdDevNormalizationLayer &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEMeanStdDevNormalizationLayer &operator=(NEMeanStdDevNormalizationLayer &&) = delete;
+    /** Default destructor */
+    ~NEMeanStdDevNormalizationLayer();
     /** Initialise the function's input and outputs.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src      |dst       |
+     * |:--------|:---------|
+     * |F32      |F32       |
+     * |F16      |F16       |
      *
      * @note If the output tensor is a nullptr, the normalization will be performed in-place.
      *

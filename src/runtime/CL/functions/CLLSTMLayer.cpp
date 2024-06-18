@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -29,6 +29,10 @@
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
 #include "arm_compute/core/utils/quantization/AsymmHelpers.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
+#include "src/core/CL/kernels/CLFillBorderKernel.h"
+#include "src/gpu/cl/kernels/ClTransposeKernel.h"
+
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
@@ -37,19 +41,21 @@ using namespace arm_compute::utils::info_helpers;
 
 CLLSTMLayer::CLLSTMLayer(std::shared_ptr<IMemoryManager> memory_manager)
     : _memory_group(std::move(memory_manager)), _fully_connected_input_gate(), _accum_input_gate1(), _subtract_input_gate(), _pixelwise_mul_input_gate(), _activation_input_gate(),
-      _fully_connected_forget_gate(), _accum_forget_gate1(), _pixelwise_mul_forget_gate(), _activation_forget_gate(), _fully_connected_cell_state(), _gemm_cell_state1(), _transpose_cell_state(),
-      _accum_cell_state1(), _accum_cell_state2(), _pixelwise_mul_cell_state1(), _activation_cell_state(), _cell_clip(), _pixelwise_mul_cell_state2(), _fully_connected_output(),
-      _pixelwise_mul_output_state1(), _accum_output1(), _activation_output(), _activation_output_state(), _pixelwise_mul_output_state2(), _fully_connected_output_state(), _projection_clip(),
-      _copy_cell_state(), _copy_output(), _concat_scratch_buffer(), _concat_inputs_forget_gate(), _concat_weights_forget_gate(), _concat_weights_input_gate(), _concat_weights_output(),
-      _ones_memset_kernel(), _mean_std_norm_input_gate(), _pixelwise_mul_input_gate_coeff(), _accum_input_gate_bias(), _mean_std_norm_forget_gate(), _pixelwise_mul_forget_gate_coeff(),
-      _accum_forget_gate_bias(), _mean_std_norm_cell_gate(), _pixelwise_mul_cell_gate_coeff(), _accum_cell_gate_bias(), _mean_std_norm_output_gate(), _pixelwise_mul_output_gate_coeff(),
-      _accum_output_gate_bias(), _input_gate_out1(), _input_gate_out2(), _input_gate_out3(), _input_gate_out4(), _forget_gate_out1(), _forget_gate_out2(), _forget_gate_out3(), _forget_gate_out4(),
-      _forget_gate_out5(), _forget_gate_out6(), _cell_state_out1(), _cell_state_out2(), _cell_state_out3(), _cell_state_out4(), _cell_state_out5(), _output1(), _output2(), _output3(), _output4(),
-      _cell_state_activation(), _output_state1(), _ones(), _input_layer_norm_out1(), _input_layer_norm_out2(), _forget_layer_norm_out1(), _forget_layer_norm_out2(), _cell_layer_norm_out1(),
-      _cell_layer_norm_out2(), _output_layer_norm_out1(), _output_layer_norm_out2(), _run_peephole_opt(false), _run_cifg_opt(false), _perform_cell_clipping(false), _has_projection_weights(false),
-      _perform_projection_clipping(false), _is_prepared(false), _is_layer_norm_lstm(false)
+      _fully_connected_forget_gate(), _accum_forget_gate1(), _pixelwise_mul_forget_gate(), _activation_forget_gate(), _fully_connected_cell_state(), _gemm_cell_state1(),
+      _transpose_cell_state(std::make_unique<opencl::kernels::ClTransposeKernel>()), _accum_cell_state1(), _accum_cell_state2(), _pixelwise_mul_cell_state1(), _activation_cell_state(), _cell_clip(),
+      _pixelwise_mul_cell_state2(), _fully_connected_output(), _pixelwise_mul_output_state1(), _accum_output1(), _activation_output(), _activation_output_state(), _pixelwise_mul_output_state2(),
+      _fully_connected_output_state(), _projection_clip(), _copy_cell_state(), _copy_output(), _concat_scratch_buffer(), _concat_inputs_forget_gate(), _concat_weights_forget_gate(),
+      _concat_weights_input_gate(), _concat_weights_output(), _ones_fill(), _mean_std_norm_input_gate(), _pixelwise_mul_input_gate_coeff(), _accum_input_gate_bias(), _mean_std_norm_forget_gate(),
+      _pixelwise_mul_forget_gate_coeff(), _accum_forget_gate_bias(), _mean_std_norm_cell_gate(), _pixelwise_mul_cell_gate_coeff(), _accum_cell_gate_bias(), _mean_std_norm_output_gate(),
+      _pixelwise_mul_output_gate_coeff(), _accum_output_gate_bias(), _input_gate_out1(), _input_gate_out2(), _input_gate_out3(), _input_gate_out4(), _forget_gate_out1(), _forget_gate_out2(),
+      _forget_gate_out3(), _forget_gate_out4(), _forget_gate_out5(), _forget_gate_out6(), _cell_state_out1(), _cell_state_out2(), _cell_state_out3(), _cell_state_out4(), _cell_state_out5(), _output1(),
+      _output2(), _output3(), _output4(), _cell_state_activation(), _output_state1(), _ones(), _input_layer_norm_out1(), _input_layer_norm_out2(), _forget_layer_norm_out1(), _forget_layer_norm_out2(),
+      _cell_layer_norm_out1(), _cell_layer_norm_out2(), _output_layer_norm_out1(), _output_layer_norm_out2(), _run_peephole_opt(false), _run_cifg_opt(false), _perform_cell_clipping(false),
+      _has_projection_weights(false), _perform_projection_clipping(false), _is_prepared(false), _is_layer_norm_lstm(false)
 {
 }
+
+CLLSTMLayer::~CLLSTMLayer() = default;
 
 void CLLSTMLayer::configure(const ICLTensor *input,
                             const ICLTensor *input_to_forget_weights, const ICLTensor *input_to_cell_weights, const ICLTensor *input_to_output_weights,
@@ -78,6 +84,10 @@ void CLLSTMLayer::configure(const CLCompileContext &compile_context, const ICLTe
                                  forget_gate_bias, cell_bias, output_gate_bias,
                                  output_state_in, cell_state_in,
                                  scratch_buffer, output_state_out, cell_state_out, output);
+
+    ARM_COMPUTE_LOG_PARAMS(input, input_to_forget_weights, input_to_cell_weights, input_to_output_weights, recurrent_to_forget_weights, recurrent_to_cell_weights,
+                           recurrent_to_output_weights, forget_gate_bias, cell_bias, output_gate_bias, output_state_in, cell_state_in, scratch_buffer, output_state_out, cell_state_out,
+                           output, lstm_params, activation_info, cell_threshold, projection_threshold);
 
     _is_layer_norm_lstm = lstm_params.use_layer_norm();
 
@@ -172,7 +182,7 @@ void CLLSTMLayer::configure(const CLCompileContext &compile_context, const ICLTe
     {
         _memory_group.manage(&_input_gate_out1);
         _ones.allocator()->init(TensorInfo(cell_state_shape, 1, input->info()->data_type()));
-        _ones_memset_kernel.configure(compile_context, &_ones, PixelValue(1, _ones.info()->data_type()));
+        _ones_fill.configure(compile_context, &_ones, PixelValue(1, _ones.info()->data_type()));
         _subtract_input_gate.configure(compile_context, &_ones, forget_gate_out, &_input_gate_out1, ConvertPolicy::SATURATE);
         _ones.allocator()->allocate();
         _run_cifg_opt = true;
@@ -241,7 +251,8 @@ void CLLSTMLayer::configure(const CLCompileContext &compile_context, const ICLTe
     _memory_group.manage(&_cell_state_out1);
     _fully_connected_cell_state.configure(compile_context, input, input_to_cell_weights, (_is_layer_norm_lstm) ? nullptr : cell_bias, &_cell_state_out1);
     _memory_group.manage(&_cell_state_out2);
-    _transpose_cell_state.configure(compile_context, recurrent_to_cell_weights, &_cell_state_out2);
+    _transpose_cell_state->configure(compile_context, recurrent_to_cell_weights->info(), _cell_state_out2.info());
+    _recurrent_to_cell_weights = recurrent_to_cell_weights;
     _memory_group.manage(&_cell_state_out3);
     _gemm_cell_state1.configure(compile_context, output_state_in, &_cell_state_out2, nullptr, &_cell_state_out3, 1.f, 0.f);
     _cell_state_out2.allocator()->allocate();
@@ -600,8 +611,8 @@ Status CLLSTMLayer::validate(const ITensorInfo *input,
     }
 
     // Validate copy kernel
-    ARM_COMPUTE_RETURN_ON_ERROR(CLCopyKernel::validate(&cell_state_tmp, cell_state_out));
-    ARM_COMPUTE_RETURN_ON_ERROR(CLCopyKernel::validate(output_state_out, output));
+    ARM_COMPUTE_RETURN_ON_ERROR(CLCopy::validate(&cell_state_tmp, cell_state_out));
+    ARM_COMPUTE_RETURN_ON_ERROR(CLCopy::validate(output_state_out, output));
 
     // Validate scratch concatenation
     std::vector<const ITensorInfo *> inputs_vector_info_raw;
@@ -642,7 +653,7 @@ void CLLSTMLayer::run()
 
     if(_run_cifg_opt)
     {
-        CLScheduler::get().enqueue(_ones_memset_kernel);
+        _ones_fill.run();
         _subtract_input_gate.run();
     }
     else
@@ -665,7 +676,12 @@ void CLLSTMLayer::run()
     }
 
     _fully_connected_cell_state.run();
-    CLScheduler::get().enqueue(_transpose_cell_state);
+    ITensorPack pack;
+    pack.add_tensor(TensorType::ACL_SRC, _recurrent_to_cell_weights);
+    pack.add_tensor(TensorType::ACL_DST, &_cell_state_out2);
+    CLScheduler::get().enqueue_op(*_transpose_cell_state,
+                                  pack,
+                                  false);
     _gemm_cell_state1.run();
     _accum_cell_state1.run();
     if(_is_layer_norm_lstm)
@@ -711,8 +727,8 @@ void CLLSTMLayer::run()
         }
     }
 
-    CLScheduler::get().enqueue(_copy_cell_state);
-    CLScheduler::get().enqueue(_copy_output);
+    _copy_cell_state.run();
+    _copy_output.run();
 
     _concat_scratch_buffer.run();
 }

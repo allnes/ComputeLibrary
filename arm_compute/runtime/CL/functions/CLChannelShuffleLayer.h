@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,11 +24,14 @@
 #ifndef ARM_COMPUTE_CLCHANNELSHUFFLELAYER_H
 #define ARM_COMPUTE_CLCHANNELSHUFFLELAYER_H
 
+#include "arm_compute/core/Error.h"
 #include "arm_compute/runtime/CL/ICLSimpleFunction.h"
 
 namespace arm_compute
 {
+class CLCompileContext;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to run @ref CLChannelShuffleLayerKernel
  *
@@ -40,6 +43,15 @@ class CLChannelShuffleLayer : public ICLSimpleFunction
 {
 public:
     /** Initialize the function
+     *
+     * Valid data layouts:
+     * - NCHW
+     * - NHWC
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |All            |All            |
      *
      * @param[in]  input      Input tensor. Data types supported: All.
      * @param[out] output     Output tensor. Data type supported: Same as @p input

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,19 +26,40 @@
 
 #include "arm_compute/runtime/IFunction.h"
 
-#include "arm_compute/core/NEON/kernels/NEBatchToSpaceLayerKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/NEON/INESimpleFunctionNoBorder.h"
 
 namespace arm_compute
 {
 class ITensor;
+class ITensorInfo;
 
 /** Basic function to run @ref NEBatchToSpaceLayerKernel. */
 class NEBatchToSpaceLayer : public INESimpleFunctionNoBorder
 {
 public:
+    /** Constructor */
+    NEBatchToSpaceLayer() = default;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEBatchToSpaceLayer(const NEBatchToSpaceLayer &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEBatchToSpaceLayer &operator=(const NEBatchToSpaceLayer &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEBatchToSpaceLayer(NEBatchToSpaceLayer &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEBatchToSpaceLayer &operator=(NEBatchToSpaceLayer &&) = delete;
+    /** Default destructor */
+    ~NEBatchToSpaceLayer() = default;
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0      |src1      |dst        |
+     * |:---------|:---------|:----------|
+     * |All       |s32       |All        |
      *
      * @param[in]  input       Tensor input. Supported tensor rank: 4. Data types supported: All.
      * @param[in]  block_shape 1-D tensor with shape [M]. Data types supported: S32

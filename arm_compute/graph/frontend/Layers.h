@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -145,6 +145,48 @@ private:
     const QuantizationInfo _out_quant_info;
 };
 
+/** ArgMinMax Layer */
+class ArgMinMaxLayer final : public ILayer
+{
+public:
+    /** Construct an activation layer.
+     *
+     * @param[in] op             Reduction Operation: min or max
+     * @param[in] axis           Axis to perform reduction along
+     * @param[in] out_data_type  (Optional) Output tensor data type
+     * @param[in] out_quant_info (Optional) Output quantization info
+     */
+    ArgMinMaxLayer(ReductionOperation     op,
+                   unsigned int           axis,
+                   DataType               out_data_type  = DataType::UNKNOWN,
+                   const QuantizationInfo out_quant_info = QuantizationInfo())
+        : _op(op),
+          _axis(axis),
+          _out_data_type(out_data_type),
+          _out_quant_info(std::move(out_quant_info))
+    {
+    }
+
+    /** Create layer and add to the given stream.
+     *
+     * @param[in] s Stream to add layer to.
+     *
+     * @return ID of the created node.
+     */
+    NodeID create_layer(IStream &s) override
+    {
+        NodeParams  common_params = { name(), s.hints().target_hint };
+        NodeIdxPair input         = { s.tail_node(), 0 };
+        return GraphBuilder::add_arg_min_max_node(s.graph(), common_params, input, _op, _axis, _out_data_type, std::move(_out_quant_info));
+    }
+
+private:
+    ReductionOperation _op;
+    unsigned int       _axis;
+    DataType           _out_data_type;
+    QuantizationInfo   _out_quant_info;
+};
+
 /** Batchnormalization Layer */
 class BatchNormalizationLayer final : public ILayer
 {
@@ -258,12 +300,12 @@ public:
     ConcatLayer(SubStream &&sub_stream1, SubStream &&sub_stream2, Ts &&... rest_sub_streams)
         : _sub_streams(), _concat_descriptor(DataLayoutDimension::CHANNEL)
     {
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream1)));
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream2)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream1)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream2)));
 
         utility::for_each([&](SubStream && sub_stream)
         {
-            _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream)));
+            _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream)));
         },
         std::move(rest_sub_streams)...);
     }
@@ -278,12 +320,12 @@ public:
     ConcatLayer(descriptors::ConcatLayerDescriptor concat_descriptor, SubStream &&sub_stream1, SubStream &&sub_stream2, Ts &&... rest_sub_streams)
         : _sub_streams(), _concat_descriptor(concat_descriptor)
     {
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream1)));
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream2)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream1)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream2)));
 
         utility::for_each([&](SubStream && sub_stream)
         {
-            _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream)));
+            _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream)));
         },
         std::move(rest_sub_streams)...);
     }
@@ -295,7 +337,7 @@ public:
     ConcatLayer(SubStream &&sub_stream)
         : _sub_streams(), _concat_descriptor(DataLayoutDimension::CHANNEL)
     {
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream)));
     }
     NodeID create_layer(IStream &s) override
     {
@@ -489,6 +531,31 @@ private:
     const QuantizationInfo _weights_quant_info;
     const QuantizationInfo _out_quant_info;
 };
+
+/** DepthToSpace Layer */
+class DepthToSpaceLayer final : public ILayer
+{
+public:
+    /** Construct an DepthToSpace layer.
+     *
+     * @param[in] block_shape Block size to rearranged
+     */
+    DepthToSpaceLayer(int32_t block_shape)
+        : _block_shape(block_shape)
+    {
+    }
+
+    NodeID create_layer(IStream &s) override
+    {
+        NodeParams  common_params = { name(), s.hints().target_hint };
+        NodeIdxPair input         = { s.tail_node(), 0 };
+        return GraphBuilder::add_depth_to_space_node(s.graph(), common_params, input, _block_shape);
+    }
+
+private:
+    int32_t _block_shape;
+};
+
 /** Dequantization Layer */
 class DequantizationLayer final : public ILayer
 {
@@ -687,8 +754,8 @@ public:
         : _num_outputs(num_outputs),
           _weights(nullptr),
           _bias(nullptr),
-          _weights_ss(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream_weights))),
-          _bias_ss(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream_bias))),
+          _weights_ss(std::make_unique<SubStream>(std::move(sub_stream_weights))),
+          _bias_ss(std::make_unique<SubStream>(std::move(sub_stream_bias))),
           _fc_info(fc_info),
           _weights_quant_info(std::move(weights_quant_info)),
           _out_quant_info(std::move(out_quant_info))
@@ -709,7 +776,7 @@ public:
         {
             return GraphBuilder::add_fully_connected_layer(s.graph(), common_params, input, _num_outputs,
                                                            std::move(_weights), std::move(_bias), _fc_info,
-                                                           std::move(_weights_quant_info), std::move(_out_quant_info));
+                                                           std::move(_weights_quant_info), std::move(_out_quant_info), s.hints().fast_math_hint);
         }
         else
         {
@@ -718,7 +785,7 @@ public:
             NodeID bias_nid = (_bias_ss == nullptr) ? EmptyNodeID : _bias_ss->tail_node();
             return GraphBuilder::add_fully_connected_layer(s.graph(), common_params, input, _num_outputs,
                                                            _weights_ss->tail_node(), bias_nid, _fc_info,
-                                                           std::move(_out_quant_info));
+                                                           std::move(_out_quant_info), s.hints().fast_math_hint);
         }
     }
 
@@ -769,6 +836,32 @@ private:
     SubStream             _ss_deltas;
     SubStream             _ss_anchors;
     GenerateProposalsInfo _info;
+};
+
+/** L2 Normalize Layer */
+class L2NormalizeLayer final : public ILayer
+{
+public:
+    /** Construct a L2 Normalize layer.
+     *
+     * @param[in] axis    Axis to perform normalization on
+     * @param[in] epsilon Lower bound value for the normalization
+     */
+    L2NormalizeLayer(int axis, float epsilon)
+        : _axis(axis), _epsilon(epsilon)
+    {
+    }
+
+    NodeID create_layer(IStream &s) override
+    {
+        NodeParams  common_params = { name(), s.hints().target_hint };
+        NodeIdxPair input         = { s.tail_node(), 0 };
+        return GraphBuilder::add_l2_normalize_node(s.graph(), common_params, input, _axis, _epsilon);
+    }
+
+private:
+    int   _axis;
+    float _epsilon;
 };
 
 /** Normalization Layer */
@@ -1040,6 +1133,34 @@ private:
     QuantizationInfo _out_quant_info;
 };
 
+/** Reduction Layer */
+class ReductionLayer final : public ILayer
+{
+public:
+    /** Construct a reduction layer.
+     *
+     * @param[in] op        Reduction operation
+     * @param[in] axis      Reduction axis
+     * @param[in] keep_dims (Optional) Whether to keep the reduced dimension after the operation. Defaults to true.
+     */
+    ReductionLayer(ReductionOperation op, unsigned int axis, bool keep_dims)
+        : _op(op), _axis(axis), _keep_dims(keep_dims)
+    {
+    }
+
+    NodeID create_layer(IStream &s) override
+    {
+        NodeParams  common_params = { name(), s.hints().target_hint };
+        NodeIdxPair input         = { s.tail_node(), 0 };
+        return GraphBuilder::add_reduction_operation_node(s.graph(), common_params, input, _op, _axis, _keep_dims);
+    }
+
+private:
+    ReductionOperation _op;
+    unsigned int       _axis;
+    bool               _keep_dims;
+};
+
 /** Reorg Layer */
 class ReorgLayer final : public ILayer
 {
@@ -1236,12 +1357,12 @@ public:
     StackLayer(SubStream &&sub_stream1, SubStream &&sub_stream2, Ts &&... rest_sub_streams)
         : _sub_streams(), _axis(0)
     {
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream1)));
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream2)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream1)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream2)));
 
         utility::for_each([&](SubStream && sub_stream)
         {
-            _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream)));
+            _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream)));
         },
         std::move(rest_sub_streams)...);
     }
@@ -1256,12 +1377,12 @@ public:
     StackLayer(int axis, SubStream &&sub_stream1, SubStream &&sub_stream2, Ts &&... rest_sub_streams)
         : _sub_streams(), _axis(axis)
     {
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream1)));
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream2)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream1)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream2)));
 
         utility::for_each([&](SubStream && sub_stream)
         {
-            _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream)));
+            _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream)));
         },
         std::move(rest_sub_streams)...);
     }
@@ -1273,7 +1394,7 @@ public:
     StackLayer(SubStream &&sub_stream)
         : _sub_streams(), _axis(0)
     {
-        _sub_streams.push_back(arm_compute::support::cpp14::make_unique<SubStream>(std::move(sub_stream)));
+        _sub_streams.push_back(std::make_unique<SubStream>(std::move(sub_stream)));
     }
     NodeID create_layer(IStream &s) override
     {
@@ -1308,17 +1429,19 @@ private:
     int                                     _axis;
 };
 
-/** Upsample Layer */
-class UpsampleLayer final : public ILayer
+/** StridedSlice Layer */
+class StridedSliceLayer final : public ILayer
 {
 public:
-    /** Construct a Upsample layer.
+    /** Construct a strided slice layer.
      *
-     * @param[in] info              Stride info
-     * @param[in] upsampling_policy Upsampling policy
+     * @param[in] starts             The starts of the dimensions of the input tensor to be sliced. The length must be of rank(input).
+     * @param[in] ends               The ends of the dimensions of the input tensor to be sliced. The length must be of rank(input).
+     * @param[in] strides            The strides of the dimensions of the input tensor to be sliced. The length must be of rank(input).
+     * @param[in] strided_slice_info Contains masks for the starts, ends and strides
      */
-    UpsampleLayer(Size2D info, InterpolationPolicy upsampling_policy)
-        : _info(info), _upsampling_policy(upsampling_policy)
+    StridedSliceLayer(Coordinates &starts, Coordinates &ends, BiStrides &strides, StridedSliceLayerInfo strided_slice_info)
+        : _starts(starts), _ends(ends), _strides(strides), _info(strided_slice_info)
     {
     }
 
@@ -1326,12 +1449,14 @@ public:
     {
         NodeParams  common_params = { name(), s.hints().target_hint };
         NodeIdxPair input         = { s.tail_node(), 0 };
-        return GraphBuilder::add_upsample_node(s.graph(), common_params, input, _info, _upsampling_policy);
+        return GraphBuilder::add_strided_slice_node(s.graph(), common_params, input, _starts, _ends, _strides, _info);
     }
 
 private:
-    Size2D              _info;
-    InterpolationPolicy _upsampling_policy;
+    Coordinates           _starts;
+    Coordinates           _ends;
+    BiStrides             _strides;
+    StridedSliceLayerInfo _info;
 };
 
 /** YOLO Layer */
@@ -1340,11 +1465,10 @@ class YOLOLayer final : public ILayer
 public:
     /** Construct a YOLO layer.
      *
-     * @param[in] act_info    Activation info
-     * @param[in] num_classes Number of classes to activate
+     * @param[in] act_info Activation info
      */
-    YOLOLayer(ActivationLayerInfo act_info, int32_t num_classes)
-        : _act_info(act_info), _num_classes(num_classes)
+    YOLOLayer(ActivationLayerInfo act_info)
+        : _act_info(act_info)
     {
     }
 
@@ -1352,12 +1476,11 @@ public:
     {
         NodeParams  common_params = { name(), s.hints().target_hint };
         NodeIdxPair input         = { s.tail_node(), 0 };
-        return GraphBuilder::add_yolo_node(s.graph(), common_params, input, _act_info, _num_classes);
+        return GraphBuilder::add_yolo_node(s.graph(), common_params, input, _act_info);
     }
 
 private:
     ActivationLayerInfo _act_info;
-    int32_t             _num_classes;
 };
 } // namespace frontend
 } // namespace graph

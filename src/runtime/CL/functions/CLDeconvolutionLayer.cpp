@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -28,6 +28,9 @@
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
 #include "arm_compute/core/utils/quantization/AsymmHelpers.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
+#include "src/core/CL/ICLKernel.h"
+
+#include "src/common/utils/Log.h"
 
 #include <cmath>
 #include <memory>
@@ -51,19 +54,20 @@ void CLDeconvolutionLayer::configure(const CLCompileContext &compile_context, IC
                                      const WeightsInfo &weights_info)
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, weights, output);
+    ARM_COMPUTE_LOG_PARAMS(input, weights, bias, output, deconv_info, weights_info);
 
     switch(CLDeconvolutionLayer::get_deconvolution_method(input->info(), weights->info(), nullptr, output->info(), deconv_info, weights_info))
     {
         case DeconvolutionMethod::DIRECT:
         {
-            auto f = arm_compute::support::cpp14::make_unique<CLDirectDeconvolutionLayer>();
+            auto f = std::make_unique<CLDirectDeconvolutionLayer>();
             f->configure(compile_context, input, weights, bias, output, deconv_info, weights_info);
             _function = std::move(f);
             break;
         }
         case DeconvolutionMethod::GEMM:
         {
-            auto f = arm_compute::support::cpp14::make_unique<CLGEMMDeconvolutionLayer>(_memory_manager);
+            auto f = std::make_unique<CLGEMMDeconvolutionLayer>(_memory_manager);
             f->configure(compile_context, input, weights, bias, output, deconv_info);
             _function = std::move(f);
             break;
@@ -104,6 +108,11 @@ DeconvolutionMethod CLDeconvolutionLayer::get_deconvolution_method(const ITensor
                                                                    const WeightsInfo &weights_info)
 {
     ARM_COMPUTE_UNUSED(output, bias, weights_info);
+
+    if(is_data_type_quantized_per_channel(weights->data_type()))
+    {
+        return DeconvolutionMethod::DIRECT;
+    }
 
     const DataLayout data_layout = input->data_layout();
 

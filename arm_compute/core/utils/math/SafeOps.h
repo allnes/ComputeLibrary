@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,7 +25,9 @@
 #define ARM_COMPUTE_UTILS_MATH_SAFE_OPS
 
 #include "arm_compute/core/Error.h"
-#include "arm_compute/core/utils/misc/Requires.h"
+#include "support/Requires.h"
+
+#include <limits>
 
 namespace arm_compute
 {
@@ -44,7 +46,7 @@ namespace math
  *
  * @return The addition result
  */
-template <typename T, REQUIRES_TA(std::is_integral<T>::value)>
+template <typename T, ARM_COMPUTE_REQUIRES_TA(std::is_integral<T>::value)>
 T safe_integer_add(T val_a, T val_b)
 {
     T result = 0;
@@ -76,7 +78,7 @@ T safe_integer_add(T val_a, T val_b)
  *
  * @return The subtraction result
  */
-template <typename T, REQUIRES_TA(std::is_integral<T>::value)>
+template <typename T, ARM_COMPUTE_REQUIRES_TA(std::is_integral<T>::value)>
 T safe_integer_sub(T val_a, T val_b)
 {
     T result = 0;
@@ -108,7 +110,7 @@ T safe_integer_sub(T val_a, T val_b)
  *
  * @return The multiplication result
  */
-template <typename T, REQUIRES_TA(std::is_integral<T>::value)>
+template <typename T, ARM_COMPUTE_REQUIRES_TA(std::is_integral<T>::value)>
 T safe_integer_mul(T val_a, T val_b)
 {
     T result = 0;
@@ -158,7 +160,7 @@ T safe_integer_mul(T val_a, T val_b)
  *
  * @return The quotient
  */
-template <typename T, REQUIRES_TA(std::is_integral<T>::value)>
+template <typename T, ARM_COMPUTE_REQUIRES_TA(std::is_integral<T>::value)>
 T safe_integer_div(T val_a, T val_b)
 {
     T result = 0;

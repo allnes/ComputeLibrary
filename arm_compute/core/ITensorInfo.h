@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -29,8 +29,8 @@
 #include "arm_compute/core/TensorShape.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Utils.h"
-#include "arm_compute/core/utils/misc/ICloneable.h"
 #include "arm_compute/core/utils/misc/Utility.h"
+#include "support/ICloneable.h"
 
 #include <cstddef>
 
@@ -40,6 +40,25 @@ namespace arm_compute
 class ITensorInfo : public misc::ICloneable<ITensorInfo>
 {
 public:
+    using TensorDimsState = std::vector<int>;
+    /** Get the value representing dynamic dimension state
+     *
+     * @return Value representing dynamic dimension state
+     *
+     */
+    static constexpr int32_t get_dynamic_state_value()
+    {
+        return _dynamic_dimension;
+    }
+    /** Get the value representing static dimension state
+     *
+     * @return Value representing static dimension state
+     *
+     */
+    static constexpr int32_t get_static_state_value()
+    {
+        return _static_dimension;
+    }
     /** Default virtual destructor */
     virtual ~ITensorInfo() = default;
     /** Set the data type to the specified value.
@@ -81,6 +100,17 @@ public:
      * @return Reference to this ITensorInfo object
      */
     virtual ITensorInfo &set_tensor_shape(const TensorShape &shape) = 0;
+    /** Set the state for each dimension of the tensor
+     *
+     * This sets the state of each dimension of the shape in terms of dynamic behavior using -1 where appropriate.
+     * The index in the state is a 1 to 1 mapping with the shape dimension index.
+     * For example if you want to express [?, 3, 3] as a dynamic input then [-1, 3, 3] has to be set as a state
+     *
+     * @param[in] state Tensor dimensions state
+     *
+     * @return Reference to this ITensorInfo object
+     */
+    virtual ITensorInfo &set_tensor_dims_state(const TensorDimsState &state) = 0;
     /** Set the quantization settings (scale and offset) of the tensor.
      *
      * @param[in] quantization_info QuantizationInfo containing the scale and offset
@@ -170,6 +200,11 @@ public:
      * @return A vector with the size for each dimension of the tensor
      */
     virtual const TensorShape &tensor_shape() const = 0;
+    /** State of each dimension of the tensor shape
+     *
+     * @return A vector with the state for each dimension of the tensor, where -1 specifies dynamic dimension
+     */
+    virtual const TensorDimsState &tensor_dims_state() const = 0;
     /** Data type used for each element of the tensor
      *
      * @return Tensor data type
@@ -205,6 +240,11 @@ public:
      * @return True if its dynamic else false
      */
     virtual bool is_dynamic() const = 0;
+    /** Flag indicating whether the values of the tensor are constant, meaning that they can change on kernel/function execution.
+     *
+     * @return True if values are constant else false
+     */
+    virtual bool are_values_constant() const = 0;
     /** Set the flag whether the tensor size can be changed.
      *
      * @param[in] is_resizable Flag that marks the tensor if it can be changed or not.
@@ -212,13 +252,13 @@ public:
      * @return Reference to this ITensorInfo object
      */
     virtual ITensorInfo &set_is_resizable(bool is_resizable) = 0;
-    /** Set the flag whether the tensor size is dynamic.
+    /** Set the flag whether the tensor values can change during kernel/function execution.
      *
-     * @param[in] is_dynamic Flag that marks the tensor if it's dynamic.
+     * @param[in] are_values_constant Flag that marks the tensor values if they can be changed or not.
      *
      * @return Reference to this ITensorInfo object
      */
-    virtual ITensorInfo &set_is_dynamic(bool is_dynamic) = 0;
+    virtual ITensorInfo &set_are_values_constant(bool are_values_constant) = 0;
     /** Valid region of the tensor. All elements in the valid region have defined values, i.e. are not undefined.
      *
      * @return The valid region.
@@ -285,6 +325,10 @@ public:
 
         return std::pair<TensorShape, ValidRegion>(bc_shape, bc_valid_region);
     }
+
+private:
+    static constexpr int32_t _dynamic_dimension = -1;
+    static constexpr int32_t _static_dimension  = 0;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_TENSORINFO_H */

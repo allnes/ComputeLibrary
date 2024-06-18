@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,20 +24,18 @@
 #ifndef ARM_COMPUTE_NESPACETODEPTHLAYER_H
 #define ARM_COMPUTE_NESPACETODEPTHLAYER_H
 
+#include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
 
-#include "arm_compute/core/NEON/kernels/NEMemsetKernel.h"
-#include "arm_compute/core/NEON/kernels/NESpaceToDepthLayerKernel.h"
-#include "arm_compute/core/Types.h"
+#include <memory>
 
 namespace arm_compute
 {
 class ITensor;
+class ITensorInfo;
+class NESpaceToDepthLayerKernel;
 
-/** This function calls the following NEON kernels/functions:
- *
- *  -# @ref NESpaceToDepthLayerKernel
- */
+/** Basic function to run @ref NESpaceToDepthLayerKernel. */
 class NESpaceToDepthLayer : public IFunction
 {
 public:
@@ -52,8 +50,17 @@ public:
     /** Allow instances of this class to be moved */
     NESpaceToDepthLayer &operator=(NESpaceToDepthLayer &&) = default;
     /** Default destructor */
-    virtual ~NESpaceToDepthLayer() = default;
+    ~NESpaceToDepthLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |All            |All            |
      *
      * @param[in]  input       Tensor input. Supported tensor rank: 4. Data types supported: All.
      * @param[out] output      Tensor output. Data types supported: same as @p input
@@ -74,7 +81,7 @@ public:
     void run() override;
 
 private:
-    NESpaceToDepthLayerKernel _space_to_depth_kernel; /**< SpaceToDepth kernel to run */
+    std::unique_ptr<NESpaceToDepthLayerKernel> _space_to_depth_kernel; /**< SpaceToDepth kernel to run */
 };
 } // namespace arm_compute
 #endif /* ARM_COMPUTE_NESPACETODEPTHLAYER_H */

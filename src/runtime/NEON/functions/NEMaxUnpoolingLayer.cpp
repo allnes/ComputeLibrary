@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,21 +24,30 @@
 #include "arm_compute/runtime/NEON/functions/NEMaxUnpoolingLayer.h"
 
 #include "arm_compute/core/ITensor.h"
+#include "arm_compute/core/Validate.h"
 #include "arm_compute/runtime/NEON/NEScheduler.h"
+#include "arm_compute/runtime/NEON/functions/NEFill.h"
+#include "src/common/utils/Log.h"
+#include "src/core/NEON/kernels/NEMaxUnpoolingLayerKernel.h"
 
 namespace arm_compute
 {
-NEMaxUnpoolingLayer::NEMaxUnpoolingLayer()
+NEMaxUnpoolingLayer::~NEMaxUnpoolingLayer() = default;
 
-    : _memset_kernel(), _unpooling_layer_kernel()
+NEMaxUnpoolingLayer::NEMaxUnpoolingLayer()
+    : _fill_func(), _unpooling_layer_kernel()
 {
 }
 
 void NEMaxUnpoolingLayer::configure(ITensor *input, ITensor *indices, ITensor *output, const PoolingLayerInfo &pool_info)
 {
+    ARM_COMPUTE_LOG_PARAMS(input, indices, output, pool_info);
+
     const PixelValue zero_value(0.f);
-    _memset_kernel.configure(output, zero_value);
-    _unpooling_layer_kernel.configure(input, indices, output, pool_info);
+    _fill_func              = std::make_unique<NEFill>();
+    _unpooling_layer_kernel = std::make_unique<NEMaxUnpoolingLayerKernel>();
+    _fill_func->configure(output, zero_value);
+    _unpooling_layer_kernel->configure(input, indices, output, pool_info);
 }
 
 Status NEMaxUnpoolingLayer::validate(const ITensorInfo *input, const ITensorInfo *indices, const ITensorInfo *output, const PoolingLayerInfo &pool_info)
@@ -48,7 +57,7 @@ Status NEMaxUnpoolingLayer::validate(const ITensorInfo *input, const ITensorInfo
 
 void NEMaxUnpoolingLayer::run()
 {
-    NEScheduler::get().schedule(&_memset_kernel, Window::DimY);
-    NEScheduler::get().schedule(&_unpooling_layer_kernel, Window::DimY);
+    _fill_func->run();
+    NEScheduler::get().schedule(_unpooling_layer_kernel.get(), Window::DimY);
 }
 } /* namespace arm_compute */

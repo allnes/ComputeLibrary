@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,9 +26,12 @@
 #include "arm_compute/core/ITensor.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/runtime/Scheduler.h"
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
+NEFFT2D::~NEFFT2D() = default;
+
 NEFFT2D::NEFFT2D(std::shared_ptr<IMemoryManager> memory_manager)
     : _memory_group(memory_manager), _first_pass_func(memory_manager), _second_pass_func(memory_manager), _first_pass_tensor()
 {
@@ -38,6 +41,7 @@ void NEFFT2D::configure(const ITensor *input, ITensor *output, const FFT2DInfo &
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
     ARM_COMPUTE_ERROR_THROW_ON(NEFFT2D::validate(input->info(), output->info(), config));
+    ARM_COMPUTE_LOG_PARAMS(input, output, config);
 
     // Setup first pass
     FFT1DInfo first_pass_config;

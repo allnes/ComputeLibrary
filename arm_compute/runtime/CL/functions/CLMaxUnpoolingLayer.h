@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,18 +24,23 @@
 #ifndef ARM_COMPUTE_CLMAXUNPOOLINGLAYER_H
 #define ARM_COMPUTE_CLMAXUNPOOLINGLAYER_H
 
+#include "arm_compute/core/Error.h"
+#include "arm_compute/runtime/CL/functions/CLFill.h"
 #include "arm_compute/runtime/IFunction.h"
 
-#include "arm_compute/core/CL/kernels/CLMaxUnpoolingLayerKernel.h"
-#include "arm_compute/core/CL/kernels/CLMemsetKernel.h"
+#include <memory>
 
 namespace arm_compute
 {
-class ITensor;
+class CLCompileContext;
+class ICLTensor;
+class ITensorInfo;
+class CLMaxUnpoolingLayerKernel;
+struct PoolingLayerInfo;
 
 /** Function to perform MaxUnpooling. This function calls the following OpenCL kernels:
  *
- * -# @ref CLMemsetKernel
+ * -# @ref CLFill
  * -# @ref CLMaxUnpoolingLayerKernel
  */
 class CLMaxUnpoolingLayer : public IFunction
@@ -43,7 +48,25 @@ class CLMaxUnpoolingLayer : public IFunction
 public:
     /** Constructor */
     CLMaxUnpoolingLayer();
+    /** Prevent instances of this class from being copied */
+    CLMaxUnpoolingLayer(const CLMaxUnpoolingLayer &) = delete;
+    /** Prevent instances of this class from being copied */
+    CLMaxUnpoolingLayer &operator=(const CLMaxUnpoolingLayer &) = delete;
+    /** Default destructor */
+    ~CLMaxUnpoolingLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |QASYMM8        |QASYMM8        |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED |
+     * |F16            |F16            |
+     * |F32            |F32            |
      *
      * @note Output shape must be equal to the shape of the original input to pool.
      *
@@ -88,8 +111,8 @@ public:
     void run() override;
 
 private:
-    CLMemsetKernel            _memset_kernel;
-    CLMaxUnpoolingLayerKernel _unpooling_layer_kernel;
+    CLFill                                     _fill;
+    std::unique_ptr<CLMaxUnpoolingLayerKernel> _unpooling_layer_kernel;
 };
 }
 #endif /* ARM_COMPUTE_CLMAXUNPOOLINGLAYER_H */

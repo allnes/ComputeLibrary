@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -47,19 +47,15 @@ TEST_SUITE(Transpose)
 // *INDENT-OFF*
 // clang-format off
 DATA_TEST_CASE(Validate, framework::DatasetMode::ALL, zip(zip(
-    framework::dataset::make("InputInfo", { TensorInfo(TensorShape(21U, 13U), 1, DataType::U8),  // Input not a multiple of 8
-                                            TensorInfo(TensorShape(21U, 13U), 1, DataType::U16), // Invalid shape
-                                            TensorInfo(TensorShape(20U, 13U), 1, DataType::U32), // Window shrink
+    framework::dataset::make("InputInfo", { TensorInfo(TensorShape(21U, 13U), 1, DataType::U16), // Invalid shape
                                             TensorInfo(TensorShape(20U, 13U), 1, DataType::U8),  // Wrong data type
                                             TensorInfo(TensorShape(20U, 16U), 1, DataType::U32), // Valid
                                           }),
-    framework::dataset::make("OutputInfo",{ TensorInfo(TensorShape(13U, 21U), 1, DataType::U8),
-                                            TensorInfo(TensorShape(21U, 13U), 1, DataType::U16),
-                                            TensorInfo(TensorShape(13U, 20U), 1, DataType::U32),
+    framework::dataset::make("OutputInfo",{ TensorInfo(TensorShape(13U, 20U), 1, DataType::U32),
                                             TensorInfo(TensorShape(31U, 20U), 1, DataType::U16),
                                             TensorInfo(TensorShape(16U, 20U), 1, DataType::U32),
                                            })),
-    framework::dataset::make("Expected", { false, false, false, false, true })),
+    framework::dataset::make("Expected", { false, false, true })),
     a_info, output_info, expected)
 {
     // Lock tensors
@@ -67,27 +63,6 @@ DATA_TEST_CASE(Validate, framework::DatasetMode::ALL, zip(zip(
 }
 // clang-format on
 // *INDENT-ON*
-
-DATA_TEST_CASE(Configuration, framework::DatasetMode::ALL, combine(datasets::Small2DShapes(), framework::dataset::make("DataType", { DataType::S8, DataType::U8, DataType::S16, DataType::U16, DataType::U32, DataType::S32, DataType::F16, DataType::F32 })),
-               shape, data_type)
-{
-    // Make rows the columns of the original shape
-    TensorShape output_shape{ shape[1], shape[0] };
-
-    // Create tensors
-    CLTensor ref_src = create_tensor<CLTensor>(shape, data_type);
-    CLTensor dst     = create_tensor<CLTensor>(output_shape, data_type);
-
-    // Create and Configure function
-    CLTranspose trans;
-    trans.configure(&ref_src, &dst);
-
-    // Validate dst region
-    const ValidRegion valid_region = shape_to_valid_region(output_shape);
-    validate(dst.info()->valid_region(), valid_region);
-
-    // TODO(bsgcomp): Add padding validation (COMPMID-659)
-}
 
 template <typename T>
 using CLTransposeFixture = TransposeValidationFixture<CLTensor, CLAccessor, CLTranspose, T>;
@@ -123,7 +98,9 @@ FIXTURE_DATA_TEST_CASE(RunLarge, CLTransposeFixture<uint16_t>, framework::Datase
 TEST_SUITE_END() // U16
 
 TEST_SUITE(U32)
-FIXTURE_DATA_TEST_CASE(RunSmall, CLTransposeFixture<uint32_t>, framework::DatasetMode::PRECOMMIT, combine(concat(datasets::Small1DShapes(), datasets::Small2DShapes()),
+FIXTURE_DATA_TEST_CASE(RunSmall, CLTransposeFixture<uint32_t>, framework::DatasetMode::PRECOMMIT, combine(concat(concat(framework::dataset::make("Shape", { TensorShape{ 1U, 5U }, TensorShape{ 4U, 5U }, TensorShape{ 3, 12 } }),
+                                                                                                                        datasets::Small1DShapes()),
+                                                                                                                 datasets::Small2DShapes()),
                                                                                                           framework::dataset::make("DataType", DataType::U32)))
 {
     // Validate output

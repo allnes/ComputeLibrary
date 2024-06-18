@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -45,7 +45,25 @@ class NEUnstack : public IFunction
 public:
     /** Default constructor */
     NEUnstack();
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEUnstack(const NEUnstack &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEUnstack &operator=(const NEUnstack &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEUnstack(NEUnstack &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEUnstack &operator=(NEUnstack &&) = delete;
+    /** Default destructor */
+    ~NEUnstack() = default;
     /** Set the input, output and unstacking axis.
+     *
+     * Valid data layouts:
+     * - All
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |All            |All            |
      *
      * @param[in]     input         A tensor to be unstacked. Data type supported: All.
      * @param[in,out] output_vector A vector of tensors. Data types supported: same as @p input.

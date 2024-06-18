@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,34 +24,49 @@
 #ifndef ARM_COMPUTE_NEDIRECTCONVOLUTIONLAYER_H
 #define ARM_COMPUTE_NEDIRECTCONVOLUTIONLAYER_H
 
-#include "arm_compute/core/NEON/kernels/NEDirectConvolutionLayerKernel.h"
-#include "arm_compute/core/NEON/kernels/NEDirectConvolutionLayerOutputStageKernel.h"
-#include "arm_compute/core/NEON/kernels/NEFillBorderKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/IMemoryManager.h"
 #include "arm_compute/runtime/MemoryGroup.h"
-#include "arm_compute/runtime/NEON/functions/NEActivationLayer.h"
-#include "arm_compute/runtime/Tensor.h"
 
 #include <memory>
 
 namespace arm_compute
 {
+class ITensor;
+class ITensorInfo;
 /** Function to run the direct convolution.
  *
- *  This function calls the following NEON kernels:
+ *  This function calls the following:
  *
- * -# @ref NEFillBorderKernel for the input
- * -# @ref NEDirectConvolutionLayerOutputStageKernel
- * -# @ref NEDirectConvolutionLayerKernel
+ * -# @ref cpu::CpuDirectConv2d
  */
 class NEDirectConvolutionLayer : public IFunction
 {
 public:
     /** Constructor */
     NEDirectConvolutionLayer(std::shared_ptr<IMemoryManager> memory_manager = nullptr);
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEDirectConvolutionLayer(const NEDirectConvolutionLayer &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEDirectConvolutionLayer &operator=(const NEDirectConvolutionLayer &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEDirectConvolutionLayer(NEDirectConvolutionLayer &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEDirectConvolutionLayer &operator=(NEDirectConvolutionLayer &&) = delete;
+    /** Default destructor */
+    ~NEDirectConvolutionLayer();
     /** Set the input, weights, biases and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src0   |src1   |src2   |dst    |
+     * |:------|:------|:------|:------|
+     * |F16    |F16    |F16    |F16    |
+     * |F32    |F32    |F32    |F32    |
      *
      * @note: DirectConvolution only works in the following configurations:
      *    1x1 convolution with stride_x = 1/2/3, stride_y = 1/2/3 data type = F16/F32
@@ -97,15 +112,9 @@ public:
     void run() override;
 
 private:
-    MemoryGroup                               _memory_group;
-    NEDirectConvolutionLayerOutputStageKernel _output_stage_kernel;
-    NEDirectConvolutionLayerKernel            _conv_kernel;
-    NEFillBorderKernel                        _input_border_handler;
-    NEActivationLayer                         _activationlayer_function;
-    Tensor                                    _accumulator;
-    bool                                      _has_bias;
-    bool                                      _is_activationlayer_enabled;
-    unsigned int                              _dim_split;
+    struct Impl;
+    std::shared_ptr<IMemoryManager> _memory_manager;
+    std::unique_ptr<Impl>           _impl;
 };
-}
+} // namespace arm_compute
 #endif /* ARM_COMPUTE_NEDIRECTCONVOLUTIONLAYER_H */

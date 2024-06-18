@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -29,13 +29,25 @@
 
 namespace arm_compute
 {
+class CLCompileContext;
 class ICLTensor;
+class ITensorInfo;
 
 /** Basic function to execute mean and standard deviation normalization by calling @ref CLMeanStdDevNormalizationKernel */
 class CLMeanStdDevNormalizationLayer : public ICLSimpleFunction
 {
 public:
     /** Initialise the function's input and outputs.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src      |dst       |
+     * |:--------|:---------|
+     * |F32      |F32       |
+     * |F16      |F16       |
      *
      * @note If the output tensor is a nullptr, the normalization will be performed in-place.
      *

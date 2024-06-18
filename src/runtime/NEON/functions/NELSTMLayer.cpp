@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Arm Limited.
+ * Copyright (c) 2018-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -29,11 +29,14 @@
 #include "arm_compute/core/utils/misc/ShapeCalculator.h"
 #include "arm_compute/core/utils/quantization/AsymmHelpers.h"
 #include "arm_compute/runtime/common/LSTMParams.h"
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
 using namespace arm_compute::misc::shape_calculator;
 using namespace arm_compute::utils::info_helpers;
+
+NELSTMLayer::~NELSTMLayer() = default;
 
 NELSTMLayer::NELSTMLayer(std::shared_ptr<IMemoryManager> memory_manager)
     : _memory_group(std::move(memory_manager)), _fully_connected_input_gate(), _accum_input_gate1(), _subtract_input_gate(), _pixelwise_mul_input_gate(), _activation_input_gate(),
@@ -65,6 +68,13 @@ void NELSTMLayer::configure(const ITensor *input,
                                  forget_gate_bias, cell_bias, output_gate_bias,
                                  output_state_in, cell_state_in,
                                  scratch_buffer, output_state_out, cell_state_out, output);
+    ARM_COMPUTE_LOG_PARAMS(input,
+                           input_to_forget_weights, input_to_cell_weights, input_to_output_weights,
+                           recurrent_to_forget_weights, recurrent_to_cell_weights, recurrent_to_output_weights,
+                           forget_gate_bias, cell_bias, output_gate_bias,
+                           output_state_in, cell_state_in,
+                           scratch_buffer, output_state_out, cell_state_out, output,
+                           lstm_params, activation_info, cell_threshold, projection_threshold);
 
     _is_layer_norm_lstm = lstm_params.use_layer_norm();
 
@@ -575,8 +585,8 @@ Status NELSTMLayer::validate(const ITensorInfo *input,
     }
 
     // Validate copy kernel
-    ARM_COMPUTE_RETURN_ON_ERROR(NECopyKernel::validate(&cell_state_tmp, cell_state_out));
-    ARM_COMPUTE_RETURN_ON_ERROR(NECopyKernel::validate(output_state_out, output));
+    ARM_COMPUTE_RETURN_ON_ERROR(NECopy::validate(&cell_state_tmp, cell_state_out));
+    ARM_COMPUTE_RETURN_ON_ERROR(NECopy::validate(output_state_out, output));
 
     // Validate scratch concatenation
     std::vector<const ITensorInfo *> inputs_vector_info_raw;
@@ -646,7 +656,7 @@ void NELSTMLayer::run()
     }
 
     _fully_connected_cell_state.run();
-    NEScheduler::get().schedule(&_transpose_cell_state, Window::DimY);
+    _transpose_cell_state.run();
     _gemm_cell_state1.run();
     _accum_cell_state1.run();
     if(_is_layer_norm_lstm)
@@ -691,8 +701,8 @@ void NELSTMLayer::run()
         }
     }
 
-    NEScheduler::get().schedule(&_copy_cell_state, Window::DimY);
-    NEScheduler::get().schedule(&_copy_output, Window::DimY);
+    _copy_cell_state.run();
+    _copy_output.run();
 
     _concat_scratch_buffer.run();
 }

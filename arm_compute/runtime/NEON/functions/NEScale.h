@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Arm Limited.
+ * Copyright (c) 2016-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,64 +24,55 @@
 #ifndef ARM_COMPUTE_NESCALEIMAGE_H
 #define ARM_COMPUTE_NESCALEIMAGE_H
 
-#include "arm_compute/core/NEON/kernels/NEFillBorderKernel.h"
-#include "arm_compute/core/NEON/kernels/NEScaleKernel.h"
-#include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
-#include "arm_compute/runtime/Tensor.h"
 
-#include <cstdint>
+#include "arm_compute/core/KernelDescriptors.h"
+#include "arm_compute/core/Types.h"
+
+#include <memory>
 
 namespace arm_compute
 {
 class ITensor;
+class ITensorInfo;
 
-/** Basic function to run @ref NEScaleKernel */
+/** Basic function to compute Scale */
 class NEScale : public IFunction
 {
 public:
-    /** Constructor
-     *
-     * Initialize NEScale
-     */
+    /** Constructor */
     NEScale();
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEScale(const NEScale &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEScale(NEScale &&) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEScale &operator=(const NEScale &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEScale &operator=(NEScale &&) = delete;
+    /** Destructor */
+    ~NEScale();
     /** Initialize the function's source, destination, interpolation type and border_mode.
      *
-     * @param[in, out] input                 Source tensor. Data type supported: QASYMM8/QASYMM8_SIGNED/U8/S16/F16/F32. (Written to only for @p border_mode != UNDEFINED)
-     * @param[out]     output                Destination tensor. Data type supported: Same as @p input. All but the lowest two dimensions must be the same size as in the input tensor, i.e. scaling is only performed within the XY-plane.
-     * @param[in]      policy                The interpolation type.
-     * @param[in]      border_mode           Strategy to use for borders.
-     * @param[in]      constant_border_value (Optional) Constant value to use for borders if border_mode is set to CONSTANT.
-     * @param[in]      sampling_policy       (Optional) Sampling policy used by the interpolation. Defaults to @ref SamplingPolicy::CENTER
-     * @param[in]      use_padding           (Optional) Is padding in use or not. Defaults to true.
-     * @param[in]      align_corners         (Optional) Align corners of input and output, only affecting bilinear policy with TOP_LEFT sampling policy. Defaults to false.
-     */
-    ARM_COMPUTE_DEPRECATED_REL(20.08)
-    void configure(ITensor *input, ITensor *output, InterpolationPolicy policy, BorderMode border_mode, PixelValue constant_border_value = PixelValue(),
-                   SamplingPolicy sampling_policy = SamplingPolicy::CENTER, bool use_padding = true, bool align_corners = false);
-    /** Initialize the function's source, destination, interpolation type and border_mode.
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |QASYMM8        |QASYMM8        |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED |
+     * |F16            |F16            |
+     * |F32            |F32            |
+     * |U8             |U8             |
+     * |S16            |S16            |
      *
      * @param[in, out] input  Source tensor. Data type supported: QASYMM8/QASYMM8_SIGNED/U8/S16/F16/F32. (Written to only for @p border_mode != UNDEFINED)
      * @param[out]     output Destination tensor. Data type supported: Same as @p input. All but the lowest two dimensions must be the same size as in the input tensor, i.e. scaling is only performed within the XY-plane.
      * @param[in]      info   @ref ScaleKernelInfo to be used for configuration
      */
     void configure(ITensor *input, ITensor *output, const ScaleKernelInfo &info);
-    /** Static function to check if given info will lead to a valid configuration of @ref NEScale
-     *
-     * @param[in] input                 Source tensor. Data type supported: QASYMM8/QASYMM8_SIGNED/U8/S16/F16/F32. (Written to only for @p border_mode != UNDEFINED)
-     * @param[in] output                Destination tensor. Data type supported: Same as @p input. All but the lowest two dimensions must be the same size as in the input tensor, i.e. scaling is only performed within the XY-plane.
-     * @param[in] policy                The interpolation type.
-     * @param[in] border_mode           Strategy to use for borders.
-     * @param[in] constant_border_value (Optional) Constant value to use for borders if border_mode is set to CONSTANT.
-     * @param[in] sampling_policy       (Optional) Sampling policy used by the interpolation. Defaults to @ref SamplingPolicy::CENTER
-     * @param[in] use_padding           (Optional) Is padding in use or not. Defaults to true.
-     * @param[in] align_corners         (Optional) Align corners of input and output, only affecting bilinear policy with TOP_LEFT sampling policy. Defaults to false.
-     *
-     * @return a status
-     */
-    ARM_COMPUTE_DEPRECATED_REL(20.08)
-    static Status validate(const ITensorInfo *input, const ITensorInfo *output, InterpolationPolicy policy, BorderMode border_mode,
-                           PixelValue constant_border_value = PixelValue(), SamplingPolicy sampling_policy = SamplingPolicy::CENTER, bool use_padding = true, bool align_corners = false);
     /** Static function to check if given info will lead to a valid configuration of @ref NEScale
      *
      * @param[in] input  Source tensor. Data type supported: QASYMM8/QASYMM8_SIGNED/U8/S16/F16/F32. (Written to only for @p border_mode != UNDEFINED)
@@ -96,12 +87,8 @@ public:
     void run() override;
 
 private:
-    Tensor             _offsets;        /**< Offset to access the element with NEAREST interpolation or the top-left element with BILINEAR interpolation in the input tensor */
-    Tensor             _dx;             /**< Element's distance between the X real coordinate and the smallest X following integer */
-    Tensor             _dy;             /**< Element's distance between the Y real coordinate and the smallest Y following integer */
-    NEScaleKernel      _scale_kernel;   /**< Kernel to perform the scaling */
-    NEFillBorderKernel _border_handler; /**< kernel to handle tensor borders */
-    bool               _use_padding;    /**< Is padding used on the tensors */
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_NESCALEIMAGE_H */

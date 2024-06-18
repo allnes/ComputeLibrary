@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Arm Limited.
+ * Copyright (c) 2017-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,7 +21,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "arm_compute/core/CL/kernels/CLSoftmaxLayerKernel.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/CL/CLTensorAllocator.h"
@@ -34,6 +33,12 @@
 #include "tests/framework/datasets/Datasets.h"
 #include "tests/validation/Validation.h"
 #include "tests/validation/fixtures/SoftmaxLayerFixture.h"
+
+#include "arm_compute/runtime/MemoryManagerOnDemand.h"
+#include "arm_compute/runtime/PoolManager.h"
+#include "arm_compute/runtime/BlobLifetimeManager.h"
+#include "arm_compute/runtime/CL/CLBufferAllocator.h"
+#include "arm_compute/runtime/BlobMemoryPool.h"
 
 namespace arm_compute
 {
@@ -63,40 +68,45 @@ const auto CNNDataTypes = framework::dataset::make("DataType",
 TEST_SUITE(CL)
 TEST_SUITE(SoftmaxLayer)
 
-DATA_TEST_CASE(Configuration, framework::DatasetMode::ALL, combine(datasets::SoftmaxLayerSmallShapes(), CNNDataTypes), shape, data_type)
+TEST_CASE(SimpleMemoryManaged, framework::DatasetMode::ALL)
 {
-    const QuantizationInfo quantization_info = is_data_type_quantized_asymmetric(data_type) ? QuantizationInfo(1.f / 255.f, 0) : QuantizationInfo();
+    // The purpose of this test is to test if the function can
+    // run correctly even with the given memory manager from its caller
+    // (Similar scenario when the library is integrated into other software)
+    // especially when working with workspace() method of
+    // @ref arm_compute::opencl::ClSoftmax.
+    const auto shape = TensorShape{4,2};    // Random shape, not important
+    constexpr auto dt = DataType::F32;      // Random data type, not important
 
-    // Create tensors
-    CLTensor src = create_tensor<CLTensor>(shape, data_type, 1, quantization_info);
-    CLTensor dst = create_tensor<CLTensor>(shape, data_type, 1, QuantizationInfo(1.f / 256.f, 0));
+    // Create a memory manager
+    auto lm = std::make_shared<BlobLifetimeManager>();
+    auto pm = std::make_shared<arm_compute::PoolManager>();
+    auto alloc = std::make_unique<CLBufferAllocator>();
+    auto mm = std::make_shared<MemoryManagerOnDemand>(lm, pm);
 
-    ARM_COMPUTE_EXPECT(src.info()->is_resizable(), framework::LogLevel::ERRORS);
-    ARM_COMPUTE_EXPECT(dst.info()->is_resizable(), framework::LogLevel::ERRORS);
+    auto src = create_tensor<CLTensor>(shape, dt);
+    auto dst = create_tensor<CLTensor>(shape, dt);
+    src.allocator()->allocate();
+    dst.allocator()->allocate();
 
-    // Create and configure function
-    CLSoftmaxLayer smx_layer;
-    smx_layer.configure(&src, &dst);
+    // Create the function with the memory manager
+    CLSoftmaxLayer smx(mm);
+    smx.configure(&src, &dst);
 
-    // Validate valid region
-    const ValidRegion valid_region = shape_to_valid_region(shape);
-    validate(src.info()->valid_region(), valid_region);
-    validate(dst.info()->valid_region(), valid_region);
+    // Populate the memory, acquire() will happen in run()
+    mm->populate(*alloc.get(), 1);
 
-    // CLLogits1DMaxShiftExpSumKernel configures the paddings only in the 2D case
-    if(shape.num_dimensions() <= 2)
-    {
-        // Get reduction kernel info
-        CLLogits1DMaxShiftExpSumKernel::ParallelReductionInfo reduction_info = CLLogits1DMaxShiftExpSumKernel::is_parallel_reduction(shape.x());
+    std::vector<float> input_vals{0.0f, 1.0f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f,};
+    library->fill_static_values(CLAccessor(src), input_vals);
 
-        // Validate src padding for 2D softmax
-        const PaddingSize padding_src = PaddingCalculator(shape.x(), std::get<1>(reduction_info)).required_padding();
-        validate(src.info()->padding(), padding_src);
+    smx.run();
 
-        // Validate dst padding for 2D softmax
-        const PaddingSize padding_dst = PaddingCalculator(shape.x(), 16).required_padding();
-        validate(dst.info()->padding(), padding_dst);
-    }
+    // Compute reference to compare
+    SimpleTensor<float> ref_src{shape, dt};
+    library->fill_static_values(ref_src, input_vals);
+    auto ref_dst = reference::softmax_layer<float>(ref_src, 1., 0, false);
+
+    validate(CLAccessor(dst), ref_dst);
 }
 
 // *INDENT-OFF*
@@ -106,8 +116,6 @@ DATA_TEST_CASE(Validate, framework::DatasetMode::ALL, zip(zip(zip(zip(
                                                        TensorInfo(TensorShape(27U, 13U), 1, DataType::F32),    // Mismatching shapes
                                                        TensorInfo(TensorShape(27U, 13U), 1, DataType::QASYMM8, // Invalid output quantization info
                                                                   QuantizationInfo(1.f/256, 12)),
-                                                       TensorInfo(TensorShape(27U, 13U), 1, DataType::F32),    // Window shrink
-                                                       TensorInfo(TensorShape(27U, 13U, 2U), 1, DataType::F32),// Invalid input dimensionality
                                                        TensorInfo(TensorShape(32U, 13U), 1, DataType::F32),
                                                        TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8,
                                                                   QuantizationInfo(1.f/256, 12)),
@@ -122,21 +130,17 @@ DATA_TEST_CASE(Validate, framework::DatasetMode::ALL, zip(zip(zip(zip(
                                                        TensorInfo(TensorShape(27U, 11U), 1, DataType::F32),
                                                        TensorInfo(TensorShape(27U, 13U), 1, DataType::QASYMM8,
                                                                   QuantizationInfo(1.f/256, 12)),
-                                                       TensorInfo(TensorShape(27U, 13U), 1, DataType::F32),
-                                                       TensorInfo(TensorShape(27U, 13U, 2U), 1, DataType::F32),
                                                        TensorInfo(TensorShape(32U, 13U), 1, DataType::F32),
                                                        TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8,
                                                                   QuantizationInfo(1.f/256, 0)),
                                                        TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8_SIGNED,
                                                                   QuantizationInfo(1.f/256, -128)),
-                                                       TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8_SIGNED, // Invalid axis high
+                                                       TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8_SIGNED,
                                                                   QuantizationInfo(1.f/256, -128)),
-                                                       TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8_SIGNED, // Invalid axis low
+                                                       TensorInfo(TensorShape(32U, 13U), 1, DataType::QASYMM8_SIGNED,
                                                                   QuantizationInfo(1.f/256, -128)),
                                                      })),
                framework::dataset::make("beta", { 1.0,
-                                                  2.0,
-                                                  1.0,
                                                   2.0,
                                                   1.0,
                                                   2.0,
@@ -149,15 +153,13 @@ DATA_TEST_CASE(Validate, framework::DatasetMode::ALL, zip(zip(zip(zip(
                                                   0,
                                                   0,
                                                   0,
+                                                  1,
                                                   0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  2,
                                                   -1,
+                                                  2,
+                                                  -3,
                                                 })),
-               framework::dataset::make("Expected", { false, false, false, false, false, true, true, true, false, false })),
+               framework::dataset::make("Expected", { false, false, false, true, true, true, false, false })),
                input_info, output_info, beta, axis, expected)
 {
     ARM_COMPUTE_EXPECT(bool(CLSoftmaxLayer::validate(&input_info.clone()->set_is_resizable(false), &output_info.clone()->set_is_resizable(false), beta, axis)) == expected, framework::LogLevel::ERRORS);
@@ -173,7 +175,7 @@ TEST_SUITE(FP16)
 FIXTURE_DATA_TEST_CASE(RunSmall, CLSoftmaxLayerFixture<half>, framework::DatasetMode::ALL, combine(combine(combine(datasets::SoftmaxLayerSmallShapes(),
                                                                                                                    framework::dataset::make("DataType", DataType::F16)),
                                                                                                            framework::dataset::make("Beta", { 1.0f, 2.0f })),
-                                                                                                   framework::dataset::make("Axis", { 0 })))
+                                                                                                   framework::dataset::make("Axis", { 0, -1 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_f16);
@@ -189,7 +191,7 @@ FIXTURE_DATA_TEST_CASE(RunLarge, CLSoftmaxLayerFixture<half>, framework::Dataset
 FIXTURE_DATA_TEST_CASE(Run4D, CLSoftmaxLayerFixture<half>, framework::DatasetMode::NIGHTLY, combine(combine(combine(datasets::SoftmaxLayer4DShapes(),
                                                                                                                     framework::dataset::make("DataType", DataType::F16)),
                                                                                                             framework::dataset::make("Beta", { 1.0f, 2.0f })),
-                                                                                                    framework::dataset::make("Axis", { 0 })))
+                                                                                                    framework::dataset::make("Axis", { 0, -1, 2 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_f16);
@@ -200,7 +202,7 @@ TEST_SUITE(FP32)
 FIXTURE_DATA_TEST_CASE(RunSmall, CLSoftmaxLayerFixture<float>, framework::DatasetMode::ALL, combine(combine(combine(datasets::SoftmaxLayerSmallShapes(),
                                                                                                                     framework::dataset::make("DataType", DataType::F32)),
                                                                                                             framework::dataset::make("Beta", { 1.0f, 2.0f })),
-                                                                                                    framework::dataset::make("Axis", { 0 })))
+                                                                                                    framework::dataset::make("Axis", { 0, 1 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_f32);
@@ -216,7 +218,7 @@ FIXTURE_DATA_TEST_CASE(RunLarge, CLSoftmaxLayerFixture<float>, framework::Datase
 FIXTURE_DATA_TEST_CASE(Run4D, CLSoftmaxLayerFixture<float>, framework::DatasetMode::NIGHTLY, combine(combine(combine(datasets::SoftmaxLayer4DShapes(),
                                                                                                                      framework::dataset::make("DataType", DataType::F32)),
                                                                                                              framework::dataset::make("Beta", { 1.0f, 2.0f })),
-                                                                                                     framework::dataset::make("Axis", { 0 })))
+                                                                                                     framework::dataset::make("Axis", { 0, -2, 3 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_f32);
@@ -233,7 +235,7 @@ FIXTURE_DATA_TEST_CASE(RunSmall, CLSoftmaxLayerQuantizedFixture<uint8_t>, framew
                                                                                                                        framework::dataset::make("DataType", DataType::QASYMM8)),
                                                                                                                        combine(framework::dataset::make("QuantizationInfo", { QuantizationInfo(0.5f, -10) }),
                                                                                                                                framework::dataset::make("Beta", { 1.0f, 2.f }))),
-                                                                                                               framework::dataset::make("Axis", { 0 })))
+                                                                                                               framework::dataset::make("Axis", { 0, 1 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_qasymm8);
@@ -251,7 +253,7 @@ FIXTURE_DATA_TEST_CASE(Run4D, CLSoftmaxLayerQuantizedFixture<uint8_t>, framework
                                                                                                                         framework::dataset::make("DataType", DataType::QASYMM8)),
                                                                                                                         combine(framework::dataset::make("QuantizationInfo", { QuantizationInfo(0.5f, -10) }),
                                                                                                                                 framework::dataset::make("Beta", { 1.0f, 2.0f }))),
-                                                                                                                framework::dataset::make("Axis", { 0 })))
+                                                                                                                framework::dataset::make("Axis", { 0, -4, 1 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_qasymm8);
@@ -265,7 +267,7 @@ FIXTURE_DATA_TEST_CASE(RunSmall, CLSoftmaxLayerQuantizedFixture<int8_t>, framewo
                                                                                                                       framework::dataset::make("DataType", DataType::QASYMM8_SIGNED)),
                                                                                                                       combine(framework::dataset::make("QuantizationInfo", { QuantizationInfo(0.5f, -10) }),
                                                                                                                               framework::dataset::make("Beta", { 1.0f, 2.f }))),
-                                                                                                              framework::dataset::make("Axis", { 0 })))
+                                                                                                              framework::dataset::make("Axis", { 0, 1 })))
 {
     // Validate output
     validate(CLAccessor(_target), _reference, tolerance_qasymm8_signed);

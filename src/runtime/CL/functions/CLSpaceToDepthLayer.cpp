@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -29,13 +29,18 @@
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
+#include "src/core/CL/kernels/CLSpaceToDepthLayerKernel.h"
+
+#include "src/common/utils/Log.h"
 
 namespace arm_compute
 {
 CLSpaceToDepthLayer::CLSpaceToDepthLayer()
-    : _space_to_depth_kernel()
+    : _space_to_depth_kernel(std::make_unique<CLSpaceToDepthLayerKernel>())
 {
 }
+
+CLSpaceToDepthLayer::~CLSpaceToDepthLayer() = default;
 
 void CLSpaceToDepthLayer::configure(const ICLTensor *input, ICLTensor *output, int32_t block_shape)
 {
@@ -44,7 +49,8 @@ void CLSpaceToDepthLayer::configure(const ICLTensor *input, ICLTensor *output, i
 
 void CLSpaceToDepthLayer::configure(const CLCompileContext &compile_context, const ICLTensor *input, ICLTensor *output, int32_t block_shape)
 {
-    _space_to_depth_kernel.configure(compile_context, input, output, block_shape);
+    ARM_COMPUTE_LOG_PARAMS(input, output, block_shape);
+    _space_to_depth_kernel->configure(compile_context, input, output, block_shape);
 }
 
 Status CLSpaceToDepthLayer::validate(const ITensorInfo *input, const ITensorInfo *output, int32_t block_shape)
@@ -54,6 +60,6 @@ Status CLSpaceToDepthLayer::validate(const ITensorInfo *input, const ITensorInfo
 
 void CLSpaceToDepthLayer::run()
 {
-    CLScheduler::get().enqueue(_space_to_depth_kernel, true);
+    CLScheduler::get().enqueue(*_space_to_depth_kernel, true);
 }
 } // namespace arm_compute

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Arm Limited.
+ * Copyright (c) 2019-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,18 +25,23 @@
 
 #include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/NEON/NEScheduler.h"
+#include "src/common/utils/Log.h"
+#include "src/core/NEON/kernels/NEFillBorderKernel.h"
+#include "src/core/NEON/kernels/NEGenerateProposalsLayerKernel.h"
+#include "src/core/NEON/kernels/NEPadLayerKernel.h"
+#include "src/core/helpers/AutoConfiguration.h"
 
 namespace arm_compute
 {
 NEGenerateProposalsLayer::NEGenerateProposalsLayer(std::shared_ptr<IMemoryManager> memory_manager)
     : _memory_group(memory_manager),
-      _permute_deltas_kernel(),
+      _permute_deltas(),
       _flatten_deltas(),
-      _permute_scores_kernel(),
+      _permute_scores(),
       _flatten_scores(),
-      _compute_anchors_kernel(),
-      _bounding_box_kernel(),
-      _pad_kernel(),
+      _compute_anchors(nullptr),
+      _bounding_box(),
+      _pad(),
       _dequantize_anchors(),
       _dequantize_deltas(),
       _quantize_all_proposals(),
@@ -61,11 +66,14 @@ NEGenerateProposalsLayer::NEGenerateProposalsLayer(std::shared_ptr<IMemoryManage
 {
 }
 
+NEGenerateProposalsLayer::~NEGenerateProposalsLayer() = default;
+
 void NEGenerateProposalsLayer::configure(const ITensor *scores, const ITensor *deltas, const ITensor *anchors, ITensor *proposals, ITensor *scores_out, ITensor *num_valid_proposals,
                                          const GenerateProposalsInfo &info)
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(scores, deltas, anchors, proposals, scores_out, num_valid_proposals);
     ARM_COMPUTE_ERROR_THROW_ON(NEGenerateProposalsLayer::validate(scores->info(), deltas->info(), anchors->info(), proposals->info(), scores_out->info(), num_valid_proposals->info(), info));
+    ARM_COMPUTE_LOG_PARAMS(scores, deltas, anchors, proposals, scores_out, num_valid_proposals, info);
 
     _is_nhwc                        = scores->info()->data_layout() == DataLayout::NHWC;
     const DataType scores_data_type = scores->info()->data_type();
@@ -84,7 +92,8 @@ void NEGenerateProposalsLayer::configure(const ITensor *scores, const ITensor *d
 
     // Compute all the anchors
     _memory_group.manage(&_all_anchors);
-    _compute_anchors_kernel.configure(anchors, &_all_anchors, ComputeAnchorsInfo(feat_width, feat_height, info.spatial_scale()));
+    _compute_anchors = std::make_unique<NEComputeAllAnchorsKernel>();
+    _compute_anchors->configure(anchors, &_all_anchors, ComputeAnchorsInfo(feat_width, feat_height, info.spatial_scale()));
 
     const TensorShape flatten_shape_deltas(values_per_roi, total_num_anchors);
     _deltas_flattened.allocator()->init(TensorInfo(flatten_shape_deltas, 1, scores_data_type, deltas->info()->quantization_info()));
@@ -94,7 +103,7 @@ void NEGenerateProposalsLayer::configure(const ITensor *scores, const ITensor *d
     if(!_is_nhwc)
     {
         _memory_group.manage(&_deltas_permuted);
-        _permute_deltas_kernel.configure(deltas, &_deltas_permuted, PermutationVector{ 2, 0, 1 });
+        _permute_deltas.configure(deltas, &_deltas_permuted, PermutationVector{ 2, 0, 1 });
         _flatten_deltas.configure(&_deltas_permuted, &_deltas_flattened);
         _deltas_permuted.allocator()->allocate();
     }
@@ -111,7 +120,7 @@ void NEGenerateProposalsLayer::configure(const ITensor *scores, const ITensor *d
     if(!_is_nhwc)
     {
         _memory_group.manage(&_scores_permuted);
-        _permute_scores_kernel.configure(scores, &_scores_permuted, PermutationVector{ 2, 0, 1 });
+        _permute_scores.configure(scores, &_scores_permuted, PermutationVector{ 2, 0, 1 });
         _flatten_scores.configure(&_scores_permuted, &_scores_flattened);
         _scores_permuted.allocator()->allocate();
     }
@@ -140,7 +149,7 @@ void NEGenerateProposalsLayer::configure(const ITensor *scores, const ITensor *d
     // Bounding box transform
     _memory_group.manage(&_all_proposals);
     BoundingBoxTransformInfo bbox_info(info.im_width(), info.im_height(), 1.f);
-    _bounding_box_kernel.configure(anchors_to_use, &_all_proposals, deltas_to_use, bbox_info);
+    _bounding_box.configure(anchors_to_use, &_all_proposals, deltas_to_use, bbox_info);
     deltas_to_use->allocator()->allocate();
     anchors_to_use->allocator()->allocate();
 
@@ -196,7 +205,7 @@ void NEGenerateProposalsLayer::configure(const ITensor *scores, const ITensor *d
     _scores_flattened.allocator()->allocate();
 
     // Add the first column that represents the batch id. This will be all zeros, as we don't support multiple images
-    _pad_kernel.configure(&_proposals_4_roi_values, proposals, PaddingList{ { 1, 0 } });
+    _pad.configure(&_proposals_4_roi_values, proposals, PaddingList{ { 1, 0 } });
     _proposals_4_roi_values.allocator()->allocate();
 }
 
@@ -239,8 +248,8 @@ Status NEGenerateProposalsLayer::validate(const ITensorInfo *scores, const ITens
     }
     else
     {
-        ARM_COMPUTE_RETURN_ON_ERROR(NEPermuteKernel::validate(deltas, &deltas_permuted_info, PermutationVector{ 2, 0, 1 }));
-        ARM_COMPUTE_RETURN_ON_ERROR(NEPermuteKernel::validate(scores, &scores_permuted_info, PermutationVector{ 2, 0, 1 }));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEPermute::validate(deltas, &deltas_permuted_info, PermutationVector{ 2, 0, 1 }));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEPermute::validate(scores, &scores_permuted_info, PermutationVector{ 2, 0, 1 }));
     }
 
     TensorInfo deltas_flattened_info(deltas->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true));
@@ -257,25 +266,25 @@ Status NEGenerateProposalsLayer::validate(const ITensorInfo *scores, const ITens
     if(is_qasymm8)
     {
         TensorInfo all_anchors_f32_info(anchors->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true).set_data_type(DataType::F32));
-        ARM_COMPUTE_RETURN_ON_ERROR(NEDequantizationLayerKernel::validate(&all_anchors_info, &all_anchors_f32_info));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEDequantizationLayer::validate(&all_anchors_info, &all_anchors_f32_info));
 
         TensorInfo deltas_flattened_f32_info(deltas->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true).set_data_type(DataType::F32));
-        ARM_COMPUTE_RETURN_ON_ERROR(NEDequantizationLayerKernel::validate(&deltas_flattened_info, &deltas_flattened_f32_info));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEDequantizationLayer::validate(&deltas_flattened_info, &deltas_flattened_f32_info));
 
         TensorInfo proposals_4_roi_values_f32(deltas->clone()->set_tensor_shape(TensorShape(values_per_roi, total_num_anchors)).set_is_resizable(true).set_data_type(DataType::F32));
-        ARM_COMPUTE_RETURN_ON_ERROR(NEBoundingBoxTransformKernel::validate(&all_anchors_f32_info, &proposals_4_roi_values_f32, &deltas_flattened_f32_info,
-                                                                           BoundingBoxTransformInfo(info.im_width(), info.im_height(), 1.f)));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEBoundingBoxTransform::validate(&all_anchors_f32_info, &proposals_4_roi_values_f32, &deltas_flattened_f32_info,
+                                                                     BoundingBoxTransformInfo(info.im_width(), info.im_height(), 1.f)));
 
-        ARM_COMPUTE_RETURN_ON_ERROR(NEQuantizationLayerKernel::validate(&proposals_4_roi_values_f32, &proposals_4_roi_values_quantized));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEQuantizationLayer::validate(&proposals_4_roi_values_f32, &proposals_4_roi_values_quantized));
         proposals_4_roi_values_to_use = &proposals_4_roi_values_quantized;
     }
     else
     {
-        ARM_COMPUTE_RETURN_ON_ERROR(NEBoundingBoxTransformKernel::validate(&all_anchors_info, &proposals_4_roi_values, &deltas_flattened_info,
-                                                                           BoundingBoxTransformInfo(info.im_width(), info.im_height(), 1.f)));
+        ARM_COMPUTE_RETURN_ON_ERROR(NEBoundingBoxTransform::validate(&all_anchors_info, &proposals_4_roi_values, &deltas_flattened_info,
+                                                                     BoundingBoxTransformInfo(info.im_width(), info.im_height(), 1.f)));
     }
 
-    ARM_COMPUTE_RETURN_ON_ERROR(NEPadLayerKernel::validate(proposals_4_roi_values_to_use, proposals, PaddingList{ { 1, 0 } }));
+    ARM_COMPUTE_RETURN_ON_ERROR(NEPadLayer::validate(proposals_4_roi_values_to_use, proposals, PaddingList{ { 1, 0 } }));
 
     if(num_valid_proposals->total_size() > 0)
     {
@@ -318,13 +327,13 @@ void NEGenerateProposalsLayer::run()
     MemoryGroupResourceScope scope_mg(_memory_group);
 
     // Compute all the anchors
-    NEScheduler::get().schedule(&_compute_anchors_kernel, Window::DimY);
+    NEScheduler::get().schedule(_compute_anchors.get(), Window::DimY);
 
     // Transpose and reshape the inputs
     if(!_is_nhwc)
     {
-        NEScheduler::get().schedule(&_permute_deltas_kernel, Window::DimY);
-        NEScheduler::get().schedule(&_permute_scores_kernel, Window::DimY);
+        _permute_deltas.run();
+        _permute_scores.run();
     }
 
     _flatten_deltas.run();
@@ -332,22 +341,22 @@ void NEGenerateProposalsLayer::run()
 
     if(_is_qasymm8)
     {
-        NEScheduler::get().schedule(&_dequantize_anchors, Window::DimY);
-        NEScheduler::get().schedule(&_dequantize_deltas, Window::DimY);
+        _dequantize_anchors.run();
+        _dequantize_deltas.run();
     }
 
     // Build the boxes
-    NEScheduler::get().schedule(&_bounding_box_kernel, Window::DimY);
+    _bounding_box.run();
 
     if(_is_qasymm8)
     {
-        NEScheduler::get().schedule(&_quantize_all_proposals, Window::DimY);
+        _quantize_all_proposals.run();
     }
 
     // Non maxima suppression
     _cpp_nms.run();
 
     // Add dummy batch indexes
-    NEScheduler::get().schedule(&_pad_kernel, Window::DimY);
+    _pad.run();
 }
 } // namespace arm_compute

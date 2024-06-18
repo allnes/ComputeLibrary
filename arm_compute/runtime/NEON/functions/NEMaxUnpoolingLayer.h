@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Arm Limited.
+ * Copyright (c) 2020-2021 Arm Limited.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -24,18 +24,20 @@
 #ifndef ARM_COMPUTE_NEMAXUNPOOLINGLAYER_H
 #define ARM_COMPUTE_NEMAXUNPOOLINGLAYER_H
 
+#include "arm_compute/core/Types.h"
 #include "arm_compute/runtime/IFunction.h"
-
-#include "arm_compute/core/NEON/kernels/NEMaxUnpoolingLayerKernel.h"
-#include "arm_compute/core/NEON/kernels/NEMemsetKernel.h"
+#include <memory>
 
 namespace arm_compute
 {
 class ITensor;
+class ITensorInfo;
+class NEFill;
+class NEMaxUnpoolingLayerKernel;
 
-/** Function to perform MaxUnpooling. This function calls the following NEON kernels:
+/** Function to perform MaxUnpooling. This function calls the following kernels:
  *
- * -# @ref NEMemsetKernel
+ * -# @ref NEFill
  * -# @ref NEMaxUnpoolingLayerKernel
  */
 class NEMaxUnpoolingLayer : public IFunction
@@ -43,7 +45,29 @@ class NEMaxUnpoolingLayer : public IFunction
 public:
     /** Constructor */
     NEMaxUnpoolingLayer();
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEMaxUnpoolingLayer(const NEMaxUnpoolingLayer &) = delete;
+    /** Prevent instances of this class from being copied (As this class contains pointers) */
+    NEMaxUnpoolingLayer &operator=(const NEMaxUnpoolingLayer &) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEMaxUnpoolingLayer(NEMaxUnpoolingLayer &&) = delete;
+    /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+    NEMaxUnpoolingLayer &operator=(NEMaxUnpoolingLayer &&) = delete;
+    /** Default destructor */
+    ~NEMaxUnpoolingLayer();
     /** Set the input and output tensors.
+     *
+     * Valid data layouts:
+     * - NHWC
+     * - NCHW
+     *
+     * Valid data type configurations:
+     * |src            |dst            |
+     * |:--------------|:--------------|
+     * |QASYMM8        |QASYMM8        |
+     * |QASYMM8_SIGNED |QASYMM8_SIGNED |
+     * |F16            |F16            |
+     * |F32            |F32            |
      *
      * @note Only supported pool size 2
      *
@@ -70,8 +94,8 @@ public:
     void run() override;
 
 private:
-    NEMemsetKernel            _memset_kernel;
-    NEMaxUnpoolingLayerKernel _unpooling_layer_kernel;
+    std::unique_ptr<NEFill>                    _fill_func;
+    std::unique_ptr<NEMaxUnpoolingLayerKernel> _unpooling_layer_kernel;
 };
 }
 #endif /* ARM_COMPUTE_NEMAXUNPOOLINGLAYER_H */
