@@ -128,15 +128,15 @@ if(NOT ARM_COMPUTE_EXCEPTIONS)
 endif()
 
 # Link OpenMP libraries if ARM_COMPUTE_OPENMP set
-if(ARM_COMPUTE_OPENMP)
-  find_package(OpenMP)
-  if(OpenMP_CXX_FOUND)
-    link_libraries(OpenMP::OpenMP_CXX)
-    add_definitions(-DARM_COMPUTE_OPENMP_SCHEDULER)
-  else()
-    message(FATAL_ERROR "OPENMP was set but no OpenMP library was found!")
-  endif()
-endif()
+#if(ARM_COMPUTE_OPENMP)
+#  find_package(OpenMP)
+#  if(OpenMP_CXX_FOUND)
+#    link_libraries(OpenMP::OpenMP_CXX)
+#    add_definitions(-DARM_COMPUTE_OPENMP_SCHEDULER)
+#  else()
+#    message(FATAL_ERROR "OPENMP was set but no OpenMP library was found!")
+#  endif()
+#endif()
 
 # ---------------------------------------------------------------------
 # SVE Library
